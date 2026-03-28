@@ -1,0 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  background: #050506;
+  color: #e4e4ea;
+}
+
+.sentientcy-threat-row {
+  transition:
+    border-color 0.25s ease,
+    background-color 0.25s ease,
+    transform 0.2s ease;
+}
+
+.sentientcy-threat-row:hover {
+  border-color: rgba(45, 212, 191, 0.35) !important;
+}

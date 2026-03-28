@@ -1,0 +1,463 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Shadow UI must stay readable even if Tailwind utilities fail to load.
+ * Matches side panel: matte-950 base, teal accent hairline, high-contrast text.
+ */
+#sentientcy-mount {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  color: #e4e4ea !important;
+  --s-bg: #050506;
+  --s-surface: #0f0f12;
+  --s-raised: #141418;
+  --s-border: #26262e;
+  --s-border-strong: #3a3a44;
+  --s-text: #e4e4ea;
+  --s-muted: #a1a1aa;
+  --s-faint: #71717a;
+  --s-accent: #5eead4;
+  --s-accent-dim: #134e4a;
+}
+
+#sentientcy-mount *,
+#sentientcy-mount *::before,
+#sentientcy-mount *::after {
+  box-sizing: border-box;
+}
+
+#sentientcy-mount button {
+  font: inherit;
+}
+
+/* Cards / panels (ThreatPanel, modal body) */
+#sentientcy-mount .sentientcy-card {
+  background-color: var(--s-bg) !important;
+  background-image: radial-gradient(ellipse 120% 80% at 50% -20%, rgba(45, 212, 191, 0.07), transparent 55%) !important;
+  color: var(--s-text) !important;
+  border: 1px solid var(--s-border) !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.85) !important;
+}
+
+#sentientcy-mount .sentientcy-card-header {
+  border-bottom: 1px solid var(--s-border) !important;
+  background-color: rgba(15, 15, 18, 0.6) !important;
+}
+
+#sentientcy-mount .sentientcy-text {
+  color: var(--s-text) !important;
+}
+
+#sentientcy-mount .sentientcy-text-title {
+  color: #f4f4f5 !important;
+  font-weight: 600;
+}
+
+#sentientcy-mount .sentientcy-text-muted {
+  color: var(--s-muted) !important;
+}
+
+#sentientcy-mount .sentientcy-text-soft {
+  color: #d4d4d8 !important;
+}
+
+#sentientcy-mount .sentientcy-text-faint {
+  color: var(--s-faint) !important;
+}
+
+#sentientcy-mount .sentientcy-well {
+  background-color: var(--s-raised) !important;
+  border: 1px solid var(--s-border-strong) !important;
+  color: var(--s-text) !important;
+}
+
+#sentientcy-mount .sentientcy-well .sentientcy-text,
+#sentientcy-mount .sentientcy-well p {
+  color: var(--s-text) !important;
+}
+
+#sentientcy-mount .sentientcy-well .sentientcy-label {
+  color: var(--s-muted) !important;
+  font-weight: 500;
+}
+
+/* Taxonomy */
+#sentientcy-mount .sentientcy-taxo {
+  background-color: var(--s-raised) !important;
+  border: 1px solid var(--s-border-strong) !important;
+  color: var(--s-text) !important;
+}
+
+#sentientcy-mount .sentientcy-taxo-node {
+  color: #d4d4d8 !important;
+  background: transparent !important;
+  border: none !important;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
+
+#sentientcy-mount .sentientcy-taxo-node:hover {
+  background-color: rgba(39, 39, 42, 0.85) !important;
+}
+
+#sentientcy-mount .sentientcy-taxo-node.is-active {
+  background-color: rgba(19, 78, 74, 0.45) !important;
+  color: #99f6e4 !important;
+  box-shadow: inset 0 0 0 1px rgba(45, 212, 191, 0.35);
+  border-radius: 0.5rem;
+}
+
+#sentientcy-mount .sentientcy-taxo-node .sentientcy-taxo-desc {
+  color: var(--s-muted) !important;
+}
+
+#sentientcy-mount .sentientcy-taxo-node.is-active .sentientcy-taxo-desc {
+  color: #5eead4 !important;
+  opacity: 0.9;
+}
+
+/* Buttons */
+#sentientcy-mount .sentientcy-btn-ghost {
+  background-color: rgba(39, 39, 42, 0.6) !important;
+  color: var(--s-text) !important;
+  border: 1px solid var(--s-border-strong) !important;
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+#sentientcy-mount .sentientcy-btn-ghost:hover {
+  background-color: #27272a !important;
+}
+
+#sentientcy-mount .sentientcy-btn-close {
+  background: transparent !important;
+  color: var(--s-muted) !important;
+  border: none !important;
+  border-radius: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+#sentientcy-mount .sentientcy-btn-close:hover {
+  background-color: #27272a !important;
+  color: var(--s-text) !important;
+}
+
+#sentientcy-mount .sentientcy-btn-primary {
+  background-color: #e4e4ea !important;
+  color: #050506 !important;
+  border: none !important;
+  border-radius: 0.5rem;
+  padding: 0.5rem 1rem;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    transform 0.15s ease;
+}
+
+#sentientcy-mount .sentientcy-btn-primary:hover {
+  background-color: #fafafa !important;
+}
+
+#sentientcy-mount .sentientcy-link {
+  color: var(--s-accent) !important;
+  background: none !important;
+  border: none !important;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+#sentientcy-mount .sentientcy-link:hover {
+  color: #99f6e4 !important;
+  text-decoration: underline;
+}
+
+/* Modal overlay — card must stack above backdrop so buttons receive clicks */
+#sentientcy-mount .sentientcy-modal-overlay {
+  z-index: 0 !important;
+  background-color: rgba(0, 0, 0, 0.78) !important;
+}
+
+#sentientcy-mount .sentientcy-modal-card {
+  position: relative !important;
+  z-index: 1 !important;
+  pointer-events: auto !important;
+  background-color: var(--s-bg) !important;
+  background-image: radial-gradient(ellipse 100% 60% at 50% 0%, rgba(45, 212, 191, 0.08), transparent 50%) !important;
+  color: var(--s-text) !important;
+  border: 1px solid var(--s-border-strong) !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.9) !important;
+}
+
+/* Session bar */
+#sentientcy-mount .sentientcy-session {
+  border: 1px solid var(--s-border-strong) !important;
+  color: var(--s-text) !important;
+  backdrop-filter: blur(10px);
+}
+
+#sentientcy-mount .sentientcy-session.safe {
+  background: linear-gradient(90deg, rgba(6, 78, 59, 0.55), rgba(10, 10, 12, 0.96), var(--s-bg)) !important;
+  border-color: rgba(6, 95, 70, 0.5) !important;
+}
+
+#sentientcy-mount .sentientcy-session.warn {
+  background: linear-gradient(90deg, rgba(120, 53, 15, 0.5), rgba(10, 10, 12, 0.96), var(--s-bg)) !important;
+  border-color: rgba(180, 83, 9, 0.45) !important;
+}
+
+#sentientcy-mount .sentientcy-session.bad {
+  background: linear-gradient(90deg, rgba(127, 29, 29, 0.55), rgba(10, 10, 12, 0.96), var(--s-bg)) !important;
+  border-color: rgba(185, 28, 28, 0.55) !important;
+}
+
+/* Scanning indicator */
+#sentientcy-mount .sentientcy-scanning {
+  position: fixed;
+  bottom: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2147483645;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  border-radius: 999px;
+  background-color: #0a0a0c !important;
+  background-size: 200% 100%;
+  background-image: linear-gradient(
+    105deg,
+    #0a0a0c 0%,
+    #0f172a 25%,
+    #0a0a0c 50%,
+    #0f172a 75%,
+    #0a0a0c 100%
+  ) !important;
+  border: 1px solid rgba(45, 212, 191, 0.55) !important;
+  color: #e4e4ea !important;
+  font: 13px/1.35 system-ui;
+  font-weight: 500;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.75);
+  pointer-events: none;
+  animation: sentientcy-scan-shimmer 2.2s linear infinite;
+}
+
+#sentientcy-mount .sentientcy-scanning-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #5eead4 !important;
+  animation: sentientcy-scan-dot 0.9s ease-in-out infinite;
+}
+
+@keyframes sentientcy-scan-dot {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.85);
+  }
+}
+
+@keyframes sentientcy-slide-in {
+  from {
+    transform: translateX(14px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+#sentientcy-mount .sentientcy-panel-animate {
+  animation: sentientcy-slide-in 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes sentientcy-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes sentientcy-modal-card-in {
+  from {
+    opacity: 0;
+    transform: scale(0.94) translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes sentientcy-preview-fade {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes sentientcy-live-glow {
+  0%,
+  100% {
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.85), 0 0 0 0 rgba(45, 212, 191, 0);
+  }
+  50% {
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.85), 0 0 0 2px rgba(45, 212, 191, 0.45);
+  }
+}
+
+@keyframes sentientcy-scan-shimmer {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 200% 50%;
+  }
+}
+
+#sentientcy-mount .sentientcy-modal-root {
+  animation: sentientcy-fade-in 0.2s ease-out both;
+}
+
+#sentientcy-mount .sentientcy-modal-card-enter {
+  animation: sentientcy-modal-card-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes sentientcy-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+#sentientcy-mount .sentientcy-preview-fade {
+  animation: sentientcy-preview-fade 0.35s ease-out both;
+}
+
+#sentientcy-mount .sentientcy-live-pulse {
+  animation: sentientcy-live-glow 1s ease-out 1;
+}
+
+#sentientcy-mount .sentientcy-preview-tab {
+  background: rgba(39, 39, 42, 0.5) !important;
+  color: var(--s-muted) !important;
+  border: 1px solid var(--s-border-strong) !important;
+  cursor: pointer;
+  transition:
+    color 0.2s ease,
+    background 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.15s ease;
+}
+
+#sentientcy-mount .sentientcy-preview-tab:hover {
+  color: var(--s-text) !important;
+  background: rgba(63, 63, 70, 0.65) !important;
+}
+
+#sentientcy-mount .sentientcy-preview-tab-active {
+  color: #0f172a !important;
+  background: linear-gradient(135deg, #5eead4, #2dd4bf) !important;
+  border-color: rgba(45, 212, 191, 0.8) !important;
+}
+
+#sentientcy-mount .sentientcy-progress-fill-animated {
+  transition: width 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+#sentientcy-mount .sentientcy-btn-ghost:active {
+  transform: scale(0.97);
+}
+
+#sentientcy-mount .sentientcy-btn-primary:active {
+  transform: scale(0.98);
+}
+
+#sentientcy-mount .sentientcy-session {
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.25s ease,
+    filter 0.2s ease;
+}
+
+#sentientcy-mount .sentientcy-session:hover {
+  transform: translateY(-1px);
+}
+
+/* Severity pills (explicit) */
+#sentientcy-mount .sentientcy-sev {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  color: #fff !important;
+}
+
+#sentientcy-mount .sentientcy-sev-CRITICAL {
+  background: linear-gradient(90deg, #dc2626, #991b1b) !important;
+}
+#sentientcy-mount .sentientcy-sev-HIGH {
+  background: linear-gradient(90deg, #ea580c, #9a3412) !important;
+}
+#sentientcy-mount .sentientcy-sev-MEDIUM {
+  background: linear-gradient(90deg, #ca8a04, #854d0e) !important;
+}
+#sentientcy-mount .sentientcy-sev-LOW {
+  background: linear-gradient(90deg, #2563eb, #1e3a8a) !important;
+}
+
+#sentientcy-mount .sentientcy-dot-red {
+  background: #ef4444 !important;
+}
+#sentientcy-mount .sentientcy-dot-amber {
+  background: #fbbf24 !important;
+}
+#sentientcy-mount .sentientcy-dot-green {
+  background: #34d399 !important;
+}
+
+#sentientcy-mount .sentientcy-icon-box {
+  border: 1px solid #52525b !important;
+  background: #18181b !important;
+}
+
+#sentientcy-mount .sentientcy-progress-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #27272a !important;
+}
+
+#sentientcy-mount .sentientcy-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #dc2626, #991b1b) !important;
+}

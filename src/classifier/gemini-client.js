@@ -13,7 +13,13 @@ function stripCodeFences(s) {
   return t.trim();
 }
 
-export async function callGemini(promptText) {
+const DEFAULT_GENERATION = {
+  temperature: 0.1,
+  topP: 0.95,
+  maxOutputTokens: 2048,
+};
+
+async function postGeminiContents(parts) {
   const key = await storage.getApiKey();
   if (!key) {
     return { networkError: true, message: 'No API key configured' };
@@ -21,12 +27,8 @@ export async function callGemini(promptText) {
 
   const url = `${GEMINI_API_URL}?key=${encodeURIComponent(key)}`;
   const body = {
-    contents: [{ parts: [{ text: promptText }] }],
-    generationConfig: {
-      temperature: 0.1,
-      topP: 0.95,
-      maxOutputTokens: 2048,
-    },
+    contents: [{ parts }],
+    generationConfig: DEFAULT_GENERATION,
   };
 
   let lastErr;
@@ -57,4 +59,24 @@ export async function callGemini(promptText) {
     }
   }
   return { networkError: true, message: lastErr || 'Gemini request failed' };
+}
+
+export async function callGemini(promptText) {
+  return postGeminiContents([{ text: promptText }]);
+}
+
+/**
+ * Multimodal classify: instruction text + one inline image (base64, no data: prefix).
+ */
+export async function callGeminiWithImage(promptText, mimeType, base64Data) {
+  const mime = mimeType || 'image/png';
+  return postGeminiContents([
+    { text: promptText },
+    {
+      inlineData: {
+        mimeType: mime,
+        data: base64Data,
+      },
+    },
+  ]);
 }

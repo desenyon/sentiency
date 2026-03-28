@@ -85,7 +85,12 @@ function OptionsApp() {
     if (!window.confirm('Clear API key, threats, and session data?')) return;
     await storage.setApiKey('');
     await storage.clearThreats();
-    await chrome.storage.local.clear();
+    try {
+      await chrome.storage.local.clear();
+    } catch {
+      setTestStatus('Cleared key and threat log; storage clear failed.');
+      return;
+    }
     setKey('');
     setTestStatus('All local data cleared.');
   };

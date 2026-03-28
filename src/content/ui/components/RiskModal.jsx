@@ -4,6 +4,7 @@ import { REMEDIATION_MODES } from '../../../shared/constants';
 import { storage } from '../../../shared/storage';
 import { getLastPasteContext } from '../../clipboard-context';
 import { remediateClipboard } from '../../remediation/clipboard-remediator';
+import { safeRuntimeSendMessage } from '../../../shared/extension-context';
 
 function sevPillClass(sev) {
   const k = sev === 'CRITICAL' || sev === 'HIGH' || sev === 'MEDIUM' || sev === 'LOW' ? sev : 'LOW';
@@ -109,7 +110,7 @@ export function RiskModal({ threat, phase, onDismiss, onOpenSide }) {
               type="button"
               className="sentientcy-link text-[13px]"
               onClick={() => {
-                chrome.runtime.sendMessage({ type: 'OPEN_SIDE_PANEL' }, () => void chrome.runtime.lastError);
+                safeRuntimeSendMessage({ type: 'OPEN_SIDE_PANEL' });
                 onOpenSide?.();
               }}
             >

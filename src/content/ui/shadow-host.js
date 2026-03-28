@@ -1,3 +1,5 @@
+import { isExtensionContextValid } from '../../shared/extension-context';
+
 const SENTIENTCY_THEME_FALLBACK = `
 #sentientcy-mount{font-family:system-ui,sans-serif;color:#e4e4ea!important}
 #sentientcy-mount .sentientcy-card{background:#050506!important;color:#e4e4ea!important;border:1px solid #26262e!important}
@@ -48,6 +50,7 @@ export async function initShadowHost() {
   let cssText = '';
   let bundleOk = false;
   try {
+    if (!isExtensionContextValid()) throw new Error('extension context invalidated');
     const url = chrome.runtime.getURL('content.css');
     const res = await fetch(url);
     bundleOk = res.ok;

@@ -2,6 +2,16 @@ import { storage } from '../shared/storage';
 
 const tabCounts = new Map();
 
+/** Content script may register its listener right after paint; retry once if the tab is not ready. */
+function sendToTab(tabId, message, attempt = 0) {
+  chrome.tabs.sendMessage(tabId, message, () => {
+    const err = chrome.runtime.lastError;
+    if (err && attempt < 1) {
+      setTimeout(() => sendToTab(tabId, message, attempt + 1), 450);
+    }
+  });
+}
+
 function badgeColorForSeverity(sev) {
   switch (sev) {
     case 'CRITICAL':
@@ -64,11 +74,7 @@ if (chrome.contextMenus?.onClicked) {
     if (info.menuItemId !== 'sentientcy-scan-selection' || !tab?.id) return;
     const text = info.selectionText || '';
     if (text.trim().length < 4) return;
-    chrome.tabs.sendMessage(
-      tab.id,
-      { type: 'SCAN_SELECTION', text },
-      () => void chrome.runtime.lastError,
-    );
+    sendToTab(tab.id, { type: 'SCAN_SELECTION', text });
   });
 }
 
@@ -77,7 +83,7 @@ chrome.commands.onCommand.addListener((command) => {
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     const id = tabs[0]?.id;
     if (id != null) {
-      chrome.tabs.sendMessage(id, { type: 'SCAN_KEYBOARD' }, () => void chrome.runtime.lastError);
+      sendToTab(id, { type: 'SCAN_KEYBOARD' });
     }
   });
 });
@@ -105,10 +111,26 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
   if (msg?.type === 'CLEAR_THREATS') {
-    storage.clearThreats().then(() => {
-      chrome.action.setBadgeText({ text: '' });
-      sendResponse({ ok: true });
-    });
+    storage
+      .clearThreats()
+      .then(() => {
+        tabCounts.clear();
+        chrome.tabs.query({}, (tabs) => {
+          void chrome.runtime.lastError;
+          for (const tab of tabs || []) {
+            if (tab.id != null) {
+              chrome.action.setBadgeText({ text: '', tabId: tab.id });
+            }
+          }
+          try {
+            chrome.action.setBadgeText({ text: '' });
+          } catch {
+            /* ignore */
+          }
+          sendResponse({ ok: true });
+        });
+      })
+      .catch(() => sendResponse({ ok: false }));
     return true;
   }
   return false;

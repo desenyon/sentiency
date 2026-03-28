@@ -1,19 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ENGINE, REMEDIATION_MODES } from '../../../shared/constants';
+import { threatSourceLabel } from '../../../shared/engine-labels';
 import { storage } from '../../../shared/storage';
 import { buildSurgicalText, resolveRemovalSpans } from '../../../shared/removal-spans';
 import { getLastPasteContext } from '../../clipboard-context';
 import { remediateClipboard } from '../../remediation/clipboard-remediator';
 import { TaxonomyTree } from './TaxonomyTree';
 import { LogoMark } from '../../../shared/LogoMark';
-
-const engineLabel = {
-  DOM: 'DOM Scanner',
-  CLIPBOARD: 'Clipboard Interceptor',
-  SESSION: 'Session Monitor',
-  COPY: 'Copy Guard',
-  SCAN: 'Selection Scan',
-};
+import { safeRuntimeSendMessage } from '../../../shared/extension-context';
 
 function sevClass(sev) {
   const k = sev === 'CRITICAL' || sev === 'HIGH' || sev === 'MEDIUM' || sev === 'LOW' ? sev : 'LOW';
@@ -105,7 +99,7 @@ export function ThreatPanel({ threat, onDismiss, storageRev = 0 }) {
       <div className="max-h-[70vh] space-y-4 overflow-y-auto px-4 py-4">
         <div className="flex flex-wrap items-center gap-2">
           <span className={sevClass(threat.severity)}>{threat.severity}</span>
-          <span className="sentientcy-text-muted text-[12px]">{engineLabel[threat.source] || threat.source}</span>
+          <span className="sentientcy-text-muted text-[12px]">{threatSourceLabel(threat.source)}</span>
         </div>
 
         <div>
@@ -189,7 +183,7 @@ export function ThreatPanel({ threat, onDismiss, storageRev = 0 }) {
         <button
           type="button"
           className="sentientcy-link"
-          onClick={() => chrome.runtime.sendMessage({ type: 'OPEN_SIDE_PANEL' }, () => void chrome.runtime.lastError)}
+          onClick={() => safeRuntimeSendMessage({ type: 'OPEN_SIDE_PANEL' })}
         >
           View all threats in side panel
         </button>

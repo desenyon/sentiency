@@ -14,8 +14,89 @@ import { initSessionMonitor } from './engines/session-monitor';
 import { analyzeText } from '../pipeline/threat-pipeline';
 import { ENGINE } from '../shared/constants';
 import { STORAGE_KEYS } from '../shared/storage';
+import { isExtensionContextValid, safeRuntimeSendMessage } from '../shared/extension-context';
 
 const DOM_PANEL_DEBOUNCE_MS = 600;
+
+/**
+ * Register before any async work so context-menu / keyboard scans work immediately after load.
+ */
+function attachEarlyMessageBridge() {
+  try {
+    chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+      if (msg?.type === 'SHOW_THREAT' && msg.threat) {
+        window.dispatchEvent(new CustomEvent('sentientcy-threat-detected', { detail: msg.threat }));
+      }
+      if (msg?.type === 'SCAN_SELECTION' && typeof msg.text === 'string') {
+        (async () => {
+          window.dispatchEvent(new CustomEvent('sentientcy-scan-busy', { detail: { phase: 'scan' } }));
+          try {
+            const t = await analyzeText(msg.text, ENGINE.SCAN, { forceClassifier: true });
+            if (t) {
+              window.dispatchEvent(new CustomEvent('sentientcy-threat-detected', { detail: t }));
+              window.dispatchEvent(new CustomEvent('sentientcy-clipboard-risk', { detail: { threat: t, phase: 'scan' } }));
+            }
+            if (isExtensionContextValid()) {
+              try {
+                sendResponse?.({ ok: true, threat: !!t });
+              } catch {
+                /* invalidated before response */
+              }
+            }
+          } finally {
+            window.dispatchEvent(new CustomEvent('sentientcy-scan-idle'));
+          }
+        })();
+        return true;
+      }
+      if (msg?.type === 'SCAN_KEYBOARD') {
+        let text = '';
+        try {
+          text = window.getSelection()?.toString() || '';
+        } catch {
+          text = '';
+        }
+        if (text.trim().length < 4) {
+          try {
+            if (isExtensionContextValid()) sendResponse?.({ ok: false, reason: 'empty' });
+          } catch {
+            /* ignore */
+          }
+          return true;
+        }
+        (async () => {
+          window.dispatchEvent(new CustomEvent('sentientcy-scan-busy', { detail: { phase: 'scan' } }));
+          try {
+            const t = await analyzeText(text, ENGINE.SCAN, { forceClassifier: true });
+            if (t) {
+              window.dispatchEvent(new CustomEvent('sentientcy-threat-detected', { detail: t }));
+              window.dispatchEvent(new CustomEvent('sentientcy-clipboard-risk', { detail: { threat: t, phase: 'scan' } }));
+            }
+            if (isExtensionContextValid()) {
+              try {
+                sendResponse?.({ ok: true, threat: !!t });
+              } catch {
+                /* invalidated before response */
+              }
+            }
+          } finally {
+            window.dispatchEvent(new CustomEvent('sentientcy-scan-idle'));
+          }
+        })();
+        return true;
+      }
+      if (msg?.type === 'SENTIENTCY_PING') {
+        sendResponse?.({ ok: true });
+        return true;
+      }
+      return false;
+    });
+  } catch {
+    /* extension context invalidated */
+  }
+}
+
+attachEarlyMessageBridge();
 
 function App({ platformInfo }) {
   const [threat, setThreat] = useState(null);
@@ -27,13 +108,29 @@ function App({ platformInfo }) {
 
   useEffect(() => {
     const onStorage = (changes, area) => {
+      if (!isExtensionContextValid()) return;
       if (area !== 'local') return;
-      if (changes[STORAGE_KEYS.THREAT_LOG] || changes[STORAGE_KEYS.SETTINGS] || changes[STORAGE_KEYS.REMEDIATION_MODE]) {
+      if (
+        changes[STORAGE_KEYS.THREAT_LOG] ||
+        changes[STORAGE_KEYS.SETTINGS] ||
+        changes[STORAGE_KEYS.REMEDIATION_MODE] ||
+        changes[STORAGE_KEYS.ENGINES]
+      ) {
         setStorageRev((n) => n + 1);
       }
     };
-    chrome.storage.onChanged.addListener(onStorage);
-    return () => chrome.storage.onChanged.removeListener(onStorage);
+    try {
+      chrome.storage.onChanged.addListener(onStorage);
+    } catch {
+      /* invalid context */
+    }
+    return () => {
+      try {
+        chrome.storage.onChanged.removeListener(onStorage);
+      } catch {
+        /* invalid context */
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -66,7 +163,7 @@ function App({ platformInfo }) {
   }, []);
 
   const openSide = () => {
-    chrome.runtime.sendMessage({ type: 'OPEN_SIDE_PANEL' }, () => void chrome.runtime.lastError);
+    safeRuntimeSendMessage({ type: 'OPEN_SIDE_PANEL' });
   };
 
   return (
@@ -94,58 +191,6 @@ function App({ platformInfo }) {
   if (platformInfo.isLLMPlatform) {
     stopSession = initSessionMonitor(platformInfo);
   }
-
-  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-    if (msg?.type === 'SHOW_THREAT' && msg.threat) {
-      window.dispatchEvent(new CustomEvent('sentientcy-threat-detected', { detail: msg.threat }));
-    }
-    if (msg?.type === 'SCAN_SELECTION' && typeof msg.text === 'string') {
-      (async () => {
-        window.dispatchEvent(new CustomEvent('sentientcy-scan-busy', { detail: { phase: 'scan' } }));
-        try {
-          const t = await analyzeText(msg.text, ENGINE.SCAN, { forceClassifier: true });
-          if (t) {
-            window.dispatchEvent(new CustomEvent('sentientcy-threat-detected', { detail: t }));
-            window.dispatchEvent(new CustomEvent('sentientcy-clipboard-risk', { detail: { threat: t, phase: 'scan' } }));
-          }
-          sendResponse?.({ ok: true, threat: !!t });
-        } finally {
-          window.dispatchEvent(new CustomEvent('sentientcy-scan-idle'));
-        }
-      })();
-      return true;
-    }
-    if (msg?.type === 'SCAN_KEYBOARD') {
-      let text = '';
-      try {
-        text = window.getSelection()?.toString() || '';
-      } catch {
-        text = '';
-      }
-      if (text.trim().length < 4) {
-        sendResponse?.({ ok: false, reason: 'empty' });
-        return true;
-      }
-      (async () => {
-        window.dispatchEvent(new CustomEvent('sentientcy-scan-busy', { detail: { phase: 'scan' } }));
-        try {
-          const t = await analyzeText(text, ENGINE.SCAN, { forceClassifier: true });
-          if (t) {
-            window.dispatchEvent(new CustomEvent('sentientcy-threat-detected', { detail: t }));
-            window.dispatchEvent(new CustomEvent('sentientcy-clipboard-risk', { detail: { threat: t, phase: 'scan' } }));
-          }
-          sendResponse?.({ ok: true, threat: !!t });
-        } finally {
-          window.dispatchEvent(new CustomEvent('sentientcy-scan-idle'));
-        }
-      })();
-      return true;
-    }
-    if (msg?.type === 'SENTIENTCY_PING') {
-      return true;
-    }
-    return false;
-  });
 
   window.addEventListener('beforeunload', () => {
     stopSession?.();

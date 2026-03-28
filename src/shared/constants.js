@@ -18,6 +18,8 @@ export const ENGINE = {
   SESSION: 'SESSION',
   COPY: 'COPY',
   SCAN: 'SCAN',
+  /** Sidebar file upload */
+  IMAGE: 'IMAGE',
 };
 
 export const GEMINI_MODEL = 'gemini-3.1-flash-lite-preview';

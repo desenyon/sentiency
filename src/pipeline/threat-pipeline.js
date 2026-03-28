@@ -3,12 +3,14 @@ import { detectInstructionPatterns } from '../detectors/instruction-pattern';
 import { detectEncodings } from '../detectors/encoding-detector';
 import { unwrapObfuscation } from '../detectors/obfuscation-unwrapper';
 import { buildSingleTurnPrompt } from '../classifier/prompts/single-turn-classify';
+import { buildImageClassifyPrompt } from '../classifier/prompts/image-classify';
 import { buildTrajectoryPrompt } from '../classifier/prompts/trajectory-classify';
-import { callGemini } from '../classifier/gemini-client';
+import { callGemini, callGeminiWithImage } from '../classifier/gemini-client';
 import { mapToTaxonomyPath } from './taxonomy-mapper';
 import { scoreSeverity } from './severity-scorer';
 import { CONFIDENCE_THRESHOLD, TRAJECTORY_WINDOW, ENGINE } from '../shared/constants';
 import { storage } from '../shared/storage';
+import { safeRuntimeSendMessage } from '../shared/extension-context';
 import { mergeAndClampSpans } from '../shared/span-utils';
 import { augmentInjectionSpans } from '../shared/removal-spans';
 
@@ -18,6 +20,107 @@ function newId() {
   } catch {
     return `t-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   }
+}
+
+async function persistAndBroadcastThreat(threat, dispatchWindowEvent) {
+  await storage.logThreat(threat);
+  safeRuntimeSendMessage({ type: 'THREAT_DETECTED', threat });
+  if (dispatchWindowEvent) {
+    try {
+      window.dispatchEvent(new CustomEvent('sentientcy-threat-detected', { detail: threat }));
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+/**
+ * Vision-based scan (sidebar upload or clipboard image paste).
+ * @param {string} mimeType e.g. image/png
+ * @param {string} base64Data raw base64 (no data: prefix)
+ * @param {string} source ENGINE.IMAGE etc.
+ * @param {{ dispatchWindowEvent?: boolean }} [options]
+ */
+export async function analyzeImage(mimeType, base64Data, source, options = {}) {
+  const dispatchWindowEvent = options.dispatchWindowEvent !== false;
+  if (!base64Data || typeof base64Data !== 'string') return null;
+
+  const settings = await storage.getSettings();
+  const threshold = typeof settings.confidenceThreshold === 'number' ? settings.confidenceThreshold : CONFIDENCE_THRESHOLD;
+
+  const prompt = buildImageClassifyPrompt();
+  const gemini = await callGeminiWithImage(prompt, mimeType, base64Data);
+
+  if (gemini?.networkError) {
+    throw new Error(gemini.message || 'Image scan failed');
+  }
+
+  const geminiOk = gemini && !gemini.parseError && !gemini.networkError;
+  const inj = geminiOk && gemini.injection_detected === true;
+  const conf = geminiOk ? Number(gemini.confidence) || 0 : 0;
+
+  if (!inj || conf < threshold) return null;
+
+  const extracted =
+    geminiOk && gemini.extracted_visible_text != null ? String(gemini.extracted_visible_text).trim() : '';
+  const originalText = extracted || `[Image: ${mimeType || 'image'}]`;
+
+  const [unicode, instruction, encoding] = await Promise.all([
+    Promise.resolve(detectUnicodeAnomalies(originalText)),
+    Promise.resolve(detectInstructionPatterns(originalText)),
+    Promise.resolve(detectEncodings(originalText)),
+  ]);
+
+  let decodedText = originalText;
+  if (encoding.findings && encoding.findings.length) {
+    decodedText = unwrapObfuscation(originalText, encoding.findings);
+  }
+
+  const attackClass = geminiOk ? gemini.attack_class : null;
+  const technique = geminiOk ? gemini.technique : null;
+  const confidence = conf;
+  const taxonomyPath = mapToTaxonomyPath(attackClass, technique);
+
+  const localSignals = {
+    unicodeAnomalies: unicode.anomaliesFound,
+    encodingFindings: encoding.encodingsFound,
+    suspicionScore: instruction.suspicionScore,
+  };
+
+  let injectionSpans = [];
+  if (geminiOk && Array.isArray(gemini.injection_spans)) {
+    injectionSpans = gemini.injection_spans.map((s) => ({
+      start: Number(s.start) || 0,
+      end: Number(s.end) || 0,
+      text: s.text,
+    }));
+  }
+  injectionSpans = mergeAndClampSpans(injectionSpans, originalText.length);
+  injectionSpans = augmentInjectionSpans(originalText, injectionSpans, instruction, encoding);
+
+  const dataUrl = `data:${mimeType || 'image/png'};base64,${base64Data}`;
+
+  const threat = {
+    id: newId(),
+    timestamp: Date.now(),
+    source,
+    originalText,
+    decodedText: decodedText !== originalText ? decodedText : null,
+    attackClass,
+    technique,
+    taxonomyPath,
+    confidence,
+    severity: scoreSeverity(confidence, attackClass, localSignals),
+    injectionSpans,
+    intent: geminiOk ? gemini.intent : null,
+    reasoning: geminiOk ? gemini.reasoning : 'Image classification',
+    localSignals,
+    geminiPartial: !geminiOk,
+    previewImageDataUrl: dataUrl,
+  };
+
+  await persistAndBroadcastThreat(threat, dispatchWindowEvent);
+  return threat;
 }
 
 export async function analyzeText(text, source, options = {}) {
@@ -103,19 +206,7 @@ export async function analyzeText(text, source, options = {}) {
     geminiPartial: !geminiOk,
   };
 
-  await storage.logThreat(threat);
-  try {
-    chrome.runtime.sendMessage({ type: 'THREAT_DETECTED', threat }, () => {
-      void chrome.runtime.lastError;
-    });
-  } catch {
-    /* ignore */
-  }
-  try {
-    window.dispatchEvent(new CustomEvent('sentientcy-threat-detected', { detail: threat }));
-  } catch {
-    /* ignore */
-  }
+  await persistAndBroadcastThreat(threat, true);
 
   return threat;
 }

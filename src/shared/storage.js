@@ -1,4 +1,5 @@
 import { REMEDIATION_MODES } from './remediation-modes';
+import { isExtensionContextValid } from './extension-context';
 
 export const STORAGE_KEYS = {
   API_KEY: 'geminiApiKey',
@@ -29,13 +30,35 @@ const DEFAULT_SETTINGS = {
 
 async function getLocal(keys) {
   return new Promise((resolve) => {
-    chrome.storage.local.get(keys, resolve);
+    try {
+      if (!isExtensionContextValid()) {
+        resolve({});
+        return;
+      }
+      chrome.storage.local.get(keys, (result) => {
+        void chrome?.runtime?.lastError;
+        resolve(result ?? {});
+      });
+    } catch {
+      resolve({});
+    }
   });
 }
 
 async function setLocal(obj) {
   return new Promise((resolve) => {
-    chrome.storage.local.set(obj, resolve);
+    try {
+      if (!isExtensionContextValid()) {
+        resolve();
+        return;
+      }
+      chrome.storage.local.set(obj, () => {
+        void chrome?.runtime?.lastError;
+        resolve();
+      });
+    } catch {
+      resolve();
+    }
   });
 }
 
@@ -105,7 +128,20 @@ export const storage = {
 
   async clearSession(tabId) {
     const k = this.sessionKey(tabId);
-    await chrome.storage.local.remove(k);
+    await new Promise((resolve) => {
+      try {
+        if (!isExtensionContextValid()) {
+          resolve();
+          return;
+        }
+        chrome.storage.local.remove(k, () => {
+          void chrome?.runtime?.lastError;
+          resolve();
+        });
+      } catch {
+        resolve();
+      }
+    });
   },
 
   async getSettings() {

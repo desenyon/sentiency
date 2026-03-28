@@ -2,6 +2,7 @@ import { analyzeText, analyzeTrajectory } from '../../pipeline/threat-pipeline';
 import { remediateSession } from '../remediation/session-remediator';
 import { ENGINE, STREAMING_STABLE_MS } from '../../shared/constants';
 import { storage } from '../../shared/storage';
+import { safeRuntimeSendMessage } from '../../shared/extension-context';
 
 function classifyTurn(el, selectors) {
   if (!el || !selectors) return null;
@@ -33,8 +34,7 @@ export function initSessionMonitor(platformInfo) {
     window.dispatchEvent(new CustomEvent('sentientcy-session-health-changed', { detail: { health } }));
   };
 
-  chrome.runtime.sendMessage({ type: 'GET_TAB_ID' }, (res) => {
-    if (chrome.runtime.lastError) return;
+  safeRuntimeSendMessage({ type: 'GET_TAB_ID' }, (res) => {
     tabId = res?.tabId ?? null;
   });
 

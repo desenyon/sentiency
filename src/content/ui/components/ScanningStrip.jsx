@@ -10,9 +10,13 @@ const LABEL = {
 export function ScanningStrip({ phase }) {
   if (!phase) return null;
   return (
-    <div className="sentientcy-scanning" role="status" aria-live="polite">
-      <span className="sentientcy-scanning-dot" aria-hidden />
-      <span>{LABEL[phase] || 'Analyzing…'}</span>
+    <div className="sentientcy-scanning sentientcy-scanning-enhanced" role="status" aria-live="polite">
+      <span className="sentientcy-scanning-dots" aria-hidden>
+        <span className="sentientcy-scanning-dot" />
+        <span className="sentientcy-scanning-dot sentientcy-scanning-dot-2" />
+        <span className="sentientcy-scanning-dot sentientcy-scanning-dot-3" />
+      </span>
+      <span className="sentientcy-scanning-label">{LABEL[phase] || 'Analyzing…'}</span>
     </div>
   );
 }

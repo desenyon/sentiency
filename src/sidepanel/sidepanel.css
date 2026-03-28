@@ -2,19 +2,238 @@
 @tailwind components;
 @tailwind utilities;
 
+html {
+  scrollbar-width: none;
+}
+
 body {
   margin: 0;
-  background: #050506;
-  color: #e4e4ea;
+  background: #09090b;
+  color: #fafafa;
+  -webkit-font-smoothing: antialiased;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
-.sentientcy-threat-row {
+/* Hide scrollbars; content still scrolls (wheel, trackpad, touch). */
+* {
+  scrollbar-width: none;
+}
+
+*::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* Superhuman-style: hairline + type hierarchy only */
+.sp-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #71717a;
+}
+
+.sp-kbd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  color: #a1a1aa;
+}
+
+.sp-threat-details > summary {
+  list-style: none;
+}
+.sp-threat-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.sp-threat-details[open] .sp-chevron {
+  transform: rotate(180deg);
+}
+
+.sp-chevron {
+  transition: transform 0.2s ease;
+  color: #52525b;
+}
+
+.sp-focus-ring:focus-visible {
+  outline: 1px solid #d4d4d8;
+  outline-offset: 2px;
+}
+
+/* API connection — prominent pill */
+.sp-api-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 9999px;
+  padding: 0.35rem 0.65rem 0.35rem 0.5rem;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+}
+
+.sp-api-status--ok {
+  color: #6ee7b7;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.18), rgba(6, 182, 212, 0.12));
+  border: 1px solid rgba(52, 211, 153, 0.45);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2), 0 1px 12px rgba(16, 185, 129, 0.12);
+}
+
+.sp-api-status--warn {
+  color: #fcd34d;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
+}
+
+.sp-api-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  flex-shrink: 0;
+}
+
+.sp-api-status--ok .sp-api-status-dot {
+  background: #34d399;
+  box-shadow: 0 0 8px rgba(52, 211, 153, 0.75);
+}
+
+.sp-api-status--warn .sp-api-status-dot {
+  background: #fbbf24;
+  box-shadow: 0 0 6px rgba(251, 191, 36, 0.5);
+}
+
+/* Secondary actions — reads as a button, not a link */
+.sp-btn-secondary {
+  border-radius: 6px;
+  border: 1px solid #3f3f46;
+  background: #18181b;
+  padding: 0.5rem 0.75rem;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fafafa;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset;
   transition:
-    border-color 0.25s ease,
-    background-color 0.25s ease,
-    transform 0.2s ease;
+    border-color 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease;
 }
 
-.sentientcy-threat-row:hover {
-  border-color: rgba(45, 212, 191, 0.35) !important;
+.sp-btn-secondary:hover:not(:disabled) {
+  border-color: #52525b;
+  background: #27272a;
+  color: #fff;
+}
+
+.sp-btn-secondary:active:not(:disabled) {
+  background: #1c1c1f;
+}
+
+.sp-btn-secondary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.sp-kbd-key {
+  display: inline-block;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  border: 1px solid #3f3f46;
+  background: #18181b;
+  color: #d4d4d8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+/* Selection — stack label, keys, rebind so nothing breaks mid-phrase */
+.sp-selection-shortcuts {
+  margin-top: 1rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid #27272a;
+  background: rgba(24, 24, 27, 0.65);
+}
+
+.sp-selection-shortcuts__label {
+  display: block;
+  margin-bottom: 0.45rem;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #71717a;
+}
+
+.sp-selection-shortcuts__keys {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.sp-selection-shortcuts__hint {
+  margin: 0.55rem 0 0;
+  padding-top: 0.55rem;
+  border-top: 1px solid #27272a;
+  font-size: 10px;
+  line-height: 1.45;
+  color: #71717a;
+}
+
+.sp-selection-shortcuts__hint code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+  color: #a1a1aa;
+  word-break: break-all;
+}
+
+/* On threat — segmented control */
+.sp-segmented {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 0.65rem;
+  padding: 3px;
+  border-radius: 8px;
+  border: 1px solid #27272a;
+  background: #0c0c0e;
+}
+
+.sp-segmented__btn {
+  width: 100%;
+  margin: 0;
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem 0.65rem;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: #a1a1aa;
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease,
+    box-shadow 0.12s ease;
+}
+
+.sp-segmented__btn:hover {
+  color: #e4e4e7;
+  background: rgba(39, 39, 42, 0.45);
+}
+
+.sp-segmented__btn.is-active {
+  color: #fafafa;
+  font-weight: 600;
+  background: #27272a;
+  box-shadow:
+    inset 0 0 0 1px #3f3f46,
+    0 1px 0 rgba(255, 255, 255, 0.03);
 }

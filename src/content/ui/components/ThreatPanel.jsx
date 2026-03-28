@@ -68,17 +68,17 @@ export function ThreatPanel({ threat, onDismiss, storageRev = 0 }) {
     <div
       className={`sentientcy-card sentientcy-panel-animate fixed bottom-4 right-4 z-[2147483646] w-[min(100vw-2rem,420px)] rounded-2xl ring-1 ring-black/40 backdrop-blur-md transition-shadow duration-500 ${livePulse ? 'sentientcy-live-pulse' : ''}`}
     >
-      <div className="sentientcy-card-header rounded-t-2xl px-4 py-3">
+      <div className="sentientcy-card-header rounded-t-2xl px-4 py-3.5">
         <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <div className="sentientcy-icon-box flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl p-0.5">
+          <div className="flex items-center gap-3">
+            <div className="sentientcy-icon-box flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl p-0.5">
               <LogoMark className="h-full w-full" />
             </div>
             <div>
-              <p className="sentientcy-text-faint text-[11px] font-semibold uppercase tracking-widest">Sentiency</p>
-              <p className="sentientcy-text-title text-sm">Threat detected</p>
-              <p className="sentientcy-text-muted mt-0.5 text-[10px] tabular-nums" aria-live="polite">
-                {spanCount} removal segment{spanCount === 1 ? '' : 's'} · live sync
+              <p className="sentientcy-text-faint text-[10px] font-bold uppercase tracking-[0.16em]">Sentiency</p>
+              <p className="sentientcy-text-title text-[15px] leading-tight">Threat detected</p>
+              <p className="sentientcy-text-muted mt-1 text-[10px] tabular-nums" aria-live="polite">
+                {spanCount} segment{spanCount === 1 ? '' : 's'} flagged · synced
               </p>
             </div>
           </div>
@@ -96,26 +96,26 @@ export function ThreatPanel({ threat, onDismiss, storageRev = 0 }) {
         </div>
       </div>
 
-      <div className="max-h-[70vh] space-y-4 overflow-y-auto px-4 py-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className={sevClass(threat.severity)}>{threat.severity}</span>
-          <span className="sentientcy-text-muted text-[12px]">{threatSourceLabel(threat.source)}</span>
+      <div className="max-h-[70vh] overflow-y-auto px-4 py-4">
+        <div className="sentientcy-section">
+          <p className="sentientcy-section-title">Summary</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={sevClass(threat.severity)}>{threat.severity}</span>
+            <span className="sentientcy-text-muted text-[12px]">{threatSourceLabel(threat.source)}</span>
+          </div>
+          <p className="sentientcy-text mt-2 text-[14px] font-semibold leading-snug">
+            {threat.attackClass || 'Unclassified'}
+          </p>
+          <p className="sentientcy-text-muted mt-1 text-[12px] leading-snug">{threat.technique || '—'}</p>
         </div>
 
-        <div>
-          <p className="sentientcy-text text-[13px] font-medium">{threat.attackClass || 'Unclassified'}</p>
-          <p className="sentientcy-text-muted mt-0.5 text-[12px]">{threat.technique || '—'}</p>
-        </div>
+        <div className="sentientcy-section-rule" />
 
-        <div>
-          <p className="sentientcy-text-faint mb-1 text-[11px] uppercase tracking-wide">Taxonomy</p>
-          <TaxonomyTree path={threat.taxonomyPath} />
-        </div>
-
-        <div>
-          <div className="sentientcy-text-muted mb-1 flex justify-between text-[11px]">
-            <span>Confidence</span>
-            <span className="sentientcy-text">{pct}%</span>
+        <div className="sentientcy-section">
+          <p className="sentientcy-section-title">Confidence</p>
+          <div className="sentientcy-text-muted mb-1.5 flex justify-between text-[11px]">
+            <span>Model score</span>
+            <span className="sentientcy-text font-semibold tabular-nums">{pct}%</span>
           </div>
           <div className="sentientcy-progress-track">
             <div
@@ -125,14 +125,28 @@ export function ThreatPanel({ threat, onDismiss, storageRev = 0 }) {
           </div>
         </div>
 
+        <div className="sentientcy-section-rule" />
+
+        <div className="sentientcy-section">
+          <p className="sentientcy-section-title">Taxonomy</p>
+          <TaxonomyTree path={threat.taxonomyPath} />
+        </div>
+
         {threat.intent ? (
-          <p className="sentientcy-text-soft text-[12px] leading-relaxed">
-            <span className="sentientcy-text-muted">Intent: </span>
-            {threat.intent}
-          </p>
+          <>
+            <div className="sentientcy-section-rule" />
+            <div className="sentientcy-section">
+              <p className="sentientcy-section-title">Intent</p>
+              <p className="sentientcy-text-soft text-[12px] leading-relaxed">{threat.intent}</p>
+            </div>
+          </>
         ) : null}
 
-        <div className="sentientcy-well rounded-xl p-3 text-[12px]">
+        <div className="sentientcy-section-rule" />
+
+        <div className="sentientcy-section">
+          <p className="sentientcy-section-title">Content preview</p>
+          <div className="sentientcy-well rounded-xl p-3 text-[12px]">
           <div className="mb-2 flex flex-wrap gap-1.5">
             <button
               type="button"
@@ -166,26 +180,37 @@ export function ThreatPanel({ threat, onDismiss, storageRev = 0 }) {
           >
             {displayBody || '—'}
           </pre>
+          </div>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <button type="button" className="sentientcy-btn-ghost" onClick={() => void applyFromPanel(REMEDIATION_MODES.SURGICAL)}>
-            Surgical
-          </button>
-          <button type="button" className="sentientcy-btn-ghost" onClick={() => void applyFromPanel(REMEDIATION_MODES.HIGHLIGHT)}>
-            Highlight
-          </button>
-          <button type="button" className="sentientcy-btn-ghost" onClick={() => void applyFromPanel(REMEDIATION_MODES.BLOCK)}>
-            Block
-          </button>
+        <div className="sentientcy-section-rule" />
+
+        <div className="sentientcy-section">
+          <p className="sentientcy-section-title">Remediation</p>
+          <p className="sentientcy-text-muted mb-2 text-[11px] leading-relaxed">
+            Apply a mode to this clipboard event when the field is still focused.
+          </p>
+          <div className="sentientcy-btn-group grid grid-cols-3 gap-2">
+            <button type="button" className="sentientcy-btn-ghost sentientcy-btn-compact" onClick={() => void applyFromPanel(REMEDIATION_MODES.SURGICAL)}>
+              Surgical
+            </button>
+            <button type="button" className="sentientcy-btn-ghost sentientcy-btn-compact" onClick={() => void applyFromPanel(REMEDIATION_MODES.HIGHLIGHT)}>
+              Highlight
+            </button>
+            <button type="button" className="sentientcy-btn-ghost sentientcy-btn-compact" onClick={() => void applyFromPanel(REMEDIATION_MODES.BLOCK)}>
+              Block
+            </button>
+          </div>
         </div>
+
+        <div className="sentientcy-section-rule" />
 
         <button
           type="button"
-          className="sentientcy-link"
+          className="sentientcy-link sentientcy-link-block w-full rounded-xl py-2 text-center text-[12px] font-semibold"
           onClick={() => safeRuntimeSendMessage({ type: 'OPEN_SIDE_PANEL' })}
         >
-          View all threats in side panel
+          Open side panel for full log
         </button>
       </div>
     </div>

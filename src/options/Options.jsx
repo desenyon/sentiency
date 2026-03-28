@@ -37,15 +37,13 @@ function OptionsApp() {
       setKey(k || '');
       setMode(s.remediationMode || REMEDIATION_MODES.SURGICAL);
       setThreshold(typeof s.confidenceThreshold === 'number' ? s.confidenceThreshold : 0.65);
-      setEngines(
-        s.engines || { dom: true, clipboard: true, session: true, copy: true },
-      );
+      setEngines(s.engines || { dom: true, clipboard: true, session: true, copy: true });
     })();
   }, []);
 
   const saveKey = async () => {
     await storage.setApiKey(key.trim());
-    setTestStatus('Saved API key.');
+    setTestStatus('API key saved.');
   };
 
   const runTest = async () => {
@@ -53,9 +51,9 @@ function OptionsApp() {
     setTestStatus('');
     try {
       await testGeminiKey(key.trim());
-      setTestStatus('Key works. Model: ' + GEMINI_MODEL);
+      setTestStatus(`Connected · ${GEMINI_MODEL}`);
     } catch (e) {
-      setTestStatus('Test failed: ' + (e.message || String(e)));
+      setTestStatus(`Failed: ${e.message || String(e)}`);
     } finally {
       setBusy(false);
     }
@@ -67,7 +65,7 @@ function OptionsApp() {
       confidenceThreshold: threshold,
       engines,
     });
-    setTestStatus('Settings saved.');
+    setTestStatus('Saved.');
   };
 
   const exportLog = async () => {
@@ -82,170 +80,199 @@ function OptionsApp() {
   };
 
   const wipe = async () => {
-    if (!window.confirm('Clear API key, threats, and session data?')) return;
+    if (!window.confirm('Clear API key, threats, and all local extension data?')) return;
     await storage.setApiKey('');
     await storage.clearThreats();
     try {
       await chrome.storage.local.clear();
     } catch {
-      setTestStatus('Cleared key and threat log; storage clear failed.');
+      setTestStatus('Partial clear only.');
       return;
     }
     setKey('');
-    setTestStatus('All local data cleared.');
+    setTestStatus('Cleared.');
   };
 
+  const engineRows = [
+    { k: 'dom', title: 'DOM scanner', sub: 'Hidden text on any site' },
+    { k: 'clipboard', title: 'Paste interceptor', sub: 'Inputs and editors' },
+    { k: 'session', title: 'Session monitor', sub: 'LLM chat pages' },
+    { k: 'copy', title: 'Copy guard', sub: 'On copy selection' },
+  ];
+
   return (
-    <div className="mx-auto max-w-2xl px-6 py-10">
-      <header className="mb-10 flex items-center gap-4">
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-matte-600 bg-matte-900 p-1">
-          <LogoMark className="h-full w-full" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-matte-50">Sentiency</h1>
-          <p className="text-sm text-matte-400">Settings and Gemini configuration</p>
+    <div className="min-h-screen bg-zinc-950 pb-24 text-zinc-100">
+      <header className="border-b border-zinc-800/90 px-6 py-8">
+        <div className="mx-auto flex max-w-lg items-start justify-between gap-6">
+          <div className="flex items-center gap-3">
+            <LogoMark className="h-8 w-8 shrink-0 opacity-95" />
+            <div>
+              <h1 className="text-[17px] font-semibold tracking-tight text-white">Settings</h1>
+              <p className="mt-0.5 text-[12px] text-zinc-500">Sentiency</p>
+            </div>
+          </div>
+          <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-center">
+            <button
+              type="button"
+              onClick={exportLog}
+              className="opt-focus text-[12px] font-medium text-zinc-500 transition hover:text-zinc-300"
+            >
+              Export log
+            </button>
+            <button
+              type="button"
+              onClick={saveAll}
+              className="opt-focus text-[12px] font-semibold text-white underline decoration-zinc-600 underline-offset-4 transition hover:decoration-zinc-400"
+            >
+              Save
+            </button>
+          </div>
         </div>
       </header>
 
-      <section className="mb-8 rounded-2xl border border-matte-800/80 bg-matte-900/30 p-6 shadow-glow">
-        <h2 className="text-sm font-semibold uppercase tracking-widest text-matte-500">Gemini API</h2>
-        <p className="mt-2 text-[13px] leading-relaxed text-matte-400">
-          Key is stored only in <code className="text-matte-200">chrome.storage.local</code>. Model:{' '}
-          <code className="text-matte-200">{GEMINI_MODEL}</code>
-        </p>
-        <p className="mt-2 text-[12px] leading-relaxed text-matte-500">
-          Tip: right-click a text selection and choose <strong className="text-matte-300">Scan selection with Sentiency</strong>, or press{' '}
-          <kbd className="rounded border border-matte-600 bg-matte-900 px-1.5 py-0.5 font-mono text-matte-200">⌘⇧S</kbd> /{' '}
-          <kbd className="rounded border border-matte-600 bg-matte-900 px-1.5 py-0.5 font-mono text-matte-200">Ctrl+Shift+S</kbd> to scan the
-          current selection. On ChatGPT and other LLM sites, pastes in the composer use <strong className="text-matte-300">beforeinput</strong>{' '}
-          interception plus in-field red highlighting when remediation is set to Highlight.
-        </p>
-        <input
-          type="password"
-          className="mt-4 w-full rounded-xl border border-matte-700 bg-matte-950 px-4 py-3 text-[14px] text-matte-100 outline-none ring-accent/0 focus:border-teal-700 focus:ring-2 focus:ring-teal-900/40"
-          placeholder="API key"
-          value={key}
-          onChange={(e) => setKey(e.target.value)}
-        />
-        <div className="mt-3 flex flex-wrap gap-2">
+      <div className="mx-auto max-w-lg px-6">
+        <section className="border-b border-zinc-800/80 py-10">
+          <p className="opt-label">Gemini</p>
+          <p className="mt-4 text-[13px] leading-relaxed text-zinc-400">
+            Key stays in <span className="text-zinc-300">chrome.storage.local</span> only. Model{' '}
+            <span className="font-mono text-[12px] text-zinc-300">{GEMINI_MODEL}</span>
+          </p>
+          <input
+            type="password"
+            className="opt-input mt-6"
+            placeholder="API key"
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            autoComplete="off"
+          />
+          <div className="mt-5 flex flex-wrap gap-x-6 gap-y-2">
+            <button
+              type="button"
+              className="opt-focus text-[13px] font-medium text-zinc-400 underline decoration-zinc-700 underline-offset-4 transition hover:text-white hover:decoration-zinc-500 disabled:opacity-40"
+              onClick={saveKey}
+              disabled={busy}
+            >
+              Save key
+            </button>
+            <button
+              type="button"
+              className="opt-focus text-[13px] font-medium text-zinc-400 underline decoration-zinc-700 underline-offset-4 transition hover:text-white hover:decoration-zinc-500 disabled:opacity-40"
+              onClick={runTest}
+              disabled={busy || !key.trim()}
+            >
+              Test
+            </button>
+          </div>
+          {testStatus ? <p className="mt-4 text-[12px] text-zinc-500">{testStatus}</p> : null}
+        </section>
+
+        <section className="border-b border-zinc-800/80 py-10">
+          <p className="opt-label">On threat</p>
+          <p className="mt-4 text-[13px] text-zinc-400">Default remediation.</p>
+          <div className="mt-6 flex flex-col border-t border-zinc-800/80">
+            {Object.values(REMEDIATION_MODES).map((m) => (
+              <label
+                key={m}
+                className="flex cursor-pointer items-start gap-3 border-b border-zinc-800/60 py-3.5"
+              >
+                <input
+                  type="radio"
+                  name="mode"
+                  checked={mode === m}
+                  onChange={() => setMode(m)}
+                  className="mt-1 border-zinc-600 bg-zinc-900 text-white"
+                />
+                <span>
+                  <span className="block text-[13px] font-medium text-zinc-200">{m}</span>
+                  <span className="mt-1 block text-[12px] leading-relaxed text-zinc-500">
+                    {m === 'SURGICAL' && 'Remove flagged spans; keep safe text.'}
+                    {m === 'HIGHLIGHT' && 'Insert all; mark risky segments when possible.'}
+                    {m === 'BLOCK' && 'Stop the paste with an explanation.'}
+                  </span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </section>
+
+        <section className="border-b border-zinc-800/80 py-10">
+          <p className="opt-label">Protection</p>
+          <p className="mt-4 text-[13px] text-zinc-400">Engines that run in the page.</p>
+          <ul className="mt-6 border-t border-zinc-800/80">
+            {engineRows.map(({ k, title, sub }) => (
+              <li key={k}>
+                <label className="flex cursor-pointer items-start justify-between gap-4 border-b border-zinc-800/60 py-3.5">
+                  <span>
+                    <span className="block text-[13px] font-medium text-zinc-200">{title}</span>
+                    <span className="mt-0.5 block text-[12px] text-zinc-500">{sub}</span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    className="mt-1 h-4 w-4 shrink-0 rounded border-zinc-600 bg-zinc-900 accent-white"
+                    checked={!!engines[k]}
+                    onChange={() => setEngines((e) => ({ ...e, [k]: !e[k] }))}
+                  />
+                </label>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <section className="border-b border-zinc-800/80 py-10">
+          <p className="opt-label">Sensitivity</p>
+          <p className="mt-4 text-[13px] text-zinc-400">Minimum confidence to confirm a hit (0.50–0.90).</p>
+          <div className="mt-8 flex items-center justify-between text-[11px] text-zinc-500">
+            <span>Strict</span>
+            <span className="font-mono text-[15px] font-semibold tabular-nums text-zinc-200">{threshold.toFixed(2)}</span>
+            <span>Relaxed</span>
+          </div>
+          <input
+            type="range"
+            min={0.5}
+            max={0.9}
+            step={0.01}
+            value={threshold}
+            onChange={(e) => setThreshold(Number(e.target.value))}
+            className="opt-range mt-4"
+          />
+        </section>
+
+        <section className="py-10">
+          <p className="opt-label text-red-400/80">Data</p>
+          <p className="mt-4 text-[13px] text-zinc-400">Remove key, log, and session data from this browser.</p>
           <button
             type="button"
-            className="rounded-lg bg-matte-100 px-4 py-2 text-[13px] font-semibold text-matte-950 hover:bg-white disabled:opacity-50"
-            onClick={saveKey}
-            disabled={busy}
+            className="opt-focus mt-6 text-[13px] font-medium text-red-400/90 underline decoration-red-900/80 underline-offset-4 transition hover:text-red-300"
+            onClick={wipe}
           >
-            Save key
+            Clear everything
           </button>
-          <button
-            type="button"
-            className="rounded-lg border border-matte-600 bg-matte-900 px-4 py-2 text-[13px] font-medium text-matte-100 hover:bg-matte-800 disabled:opacity-50"
-            onClick={runTest}
-            disabled={busy || !key.trim()}
+        </section>
+
+        <p className="pb-12 text-center text-[11px] text-zinc-600">
+          <a
+            className="opt-focus text-zinc-500 underline-offset-2 transition hover:text-zinc-400 hover:underline"
+            href="https://www.crowdstrike.com/en-us/blog/ai-threats-prompt-injection/"
+            target="_blank"
+            rel="noreferrer"
           >
-            Test key
-          </button>
-        </div>
-        {testStatus ? <p className="mt-3 text-[13px] text-matte-300">{testStatus}</p> : null}
-      </section>
-
-      <section className="mb-8 rounded-2xl border border-matte-800/80 bg-matte-900/30 p-6">
-        <h2 className="text-sm font-semibold uppercase tracking-widest text-matte-500">Remediation default</h2>
-        <div className="mt-4 space-y-3">
-          {Object.values(REMEDIATION_MODES).map((m) => (
-            <label key={m} className="flex cursor-pointer items-start gap-3 rounded-xl border border-matte-800/60 bg-matte-950/50 p-3">
-              <input
-                type="radio"
-                name="mode"
-                checked={mode === m}
-                onChange={() => setMode(m)}
-                className="mt-1 accent-teal-500"
-              />
-              <div>
-                <p className="text-[14px] font-medium text-matte-100">{m}</p>
-                <p className="text-[12px] text-matte-500">
-                  {m === 'SURGICAL' &&
-                    'Default: remove flagged injection spans from pasted text and insert only the safe remainder into any text field (works on all sites).'}
-                  {m === 'HIGHLIGHT' && 'Insert full paste but mark risky segments in the field when possible.'}
-                  {m === 'BLOCK' && 'Block the paste entirely and show why.'}
-                </p>
-              </div>
-            </label>
-          ))}
-        </div>
-      </section>
-
-      <section className="mb-8 rounded-2xl border border-matte-800/80 bg-matte-900/30 p-6">
-        <h2 className="text-sm font-semibold uppercase tracking-widest text-matte-500">Engines</h2>
-        <div className="mt-4 space-y-2">
-          {[
-            ['dom',             'DOM scanner (hidden content only, all sites)'],
-            ['clipboard', 'Paste interceptor (any site with inputs, textareas, or rich editors)'],
-            ['session', 'LLM session trajectory'],
-            ['copy', 'Copy-time risk popup'],
-          ].map(([k, label]) => (
-            <label key={k} className="flex items-center justify-between rounded-xl border border-matte-800/60 px-3 py-2">
-              <span className="text-[13px] text-matte-200">{label}</span>
-              <input
-                type="checkbox"
-                className="accent-teal-500"
-                checked={!!engines[k]}
-                onChange={() => setEngines((e) => ({ ...e, [k]: !e[k] }))}
-              />
-            </label>
-          ))}
-        </div>
-      </section>
-
-      <section className="mb-8 rounded-2xl border border-matte-800/80 bg-matte-900/30 p-6">
-        <h2 className="text-sm font-semibold uppercase tracking-widest text-matte-500">Classifier threshold</h2>
-        <p className="mt-2 text-[13px] text-matte-400">Minimum model confidence to treat a hit as confirmed (0.5–0.9).</p>
-        <input
-          type="range"
-          min={0.5}
-          max={0.9}
-          step={0.01}
-          value={threshold}
-          onChange={(e) => setThreshold(Number(e.target.value))}
-          className="mt-4 w-full accent-teal-500"
-        />
-        <p className="mt-2 text-[13px] text-matte-300">{threshold.toFixed(2)}</p>
-      </section>
-
-      <div className="flex flex-wrap gap-3">
-        <button
-          type="button"
-          className="rounded-lg bg-teal-600 px-5 py-2.5 text-[14px] font-semibold text-white hover:bg-teal-500"
-          onClick={saveAll}
-        >
-          Save settings
-        </button>
-        <button
-          type="button"
-          className="rounded-lg border border-matte-600 px-5 py-2.5 text-[14px] font-medium text-matte-100 hover:bg-matte-800"
-          onClick={exportLog}
-        >
-          Export threat log (JSON)
-        </button>
-        <button
-          type="button"
-          className="rounded-lg border border-red-900/60 px-5 py-2.5 text-[14px] font-medium text-red-300 hover:bg-red-950/40"
-          onClick={wipe}
-        >
-          Clear all stored data
-        </button>
+            CrowdStrike — prompt injection
+          </a>
+        </p>
       </div>
 
-      <p className="mt-10 text-[12px] text-matte-500">
-        Taxonomy reference:{' '}
-        <a
-          className="text-accent hover:underline"
-          href="https://www.crowdstrike.com/en-us/blog/ai-threats-prompt-injection/"
-          target="_blank"
-          rel="noreferrer"
-        >
-          CrowdStrike prompt injection research
-        </a>
-      </p>
+      <footer className="fixed bottom-0 left-0 right-0 border-t border-zinc-800/90 bg-zinc-950/95 px-6 py-4 backdrop-blur-sm">
+        <div className="mx-auto flex max-w-lg items-center justify-between gap-4">
+          <p className="text-[11px] text-zinc-600">Unsaved changes need Save.</p>
+          <button
+            type="button"
+            onClick={saveAll}
+            className="opt-focus text-[12px] font-semibold text-white underline decoration-zinc-500 underline-offset-4 transition hover:decoration-zinc-300"
+          >
+            Save settings
+          </button>
+        </div>
+      </footer>
     </div>
   );
 }

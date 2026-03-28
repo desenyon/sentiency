@@ -45,6 +45,25 @@ async function scanElement(el) {
   if (threat) await remediateDOM(el, threat);
 }
 
+async function scanImage(img) {
+  const engines = await storage.getEngines();
+  if (!engines.dom) return;
+  if (isSentientcyNode(img)) return;
+
+  const vis = analyzeVisibility(img);
+  if (!vis.isHidden) return;
+
+  const alt = (img.getAttribute('alt') || '').trim();
+  const title = (img.getAttribute('title') || '').trim();
+  const payload = alt.length >= 8 ? alt : title.length >= 8 ? title : '';
+  if (!payload) return;
+
+  const threat = await analyzeText(payload, ENGINE.DOM);
+  if (!threat) return;
+  const enriched = { ...threat, originalText: threat.originalText || payload };
+  await remediateDOM(img, enriched);
+}
+
 export function initDOMScanner() {
   let timer = null;
 
@@ -59,6 +78,10 @@ export function initDOMScanner() {
       const threat = await analyzeText(combined, ENGINE.DOM);
       if (threat) await remediateDOM(el, threat);
     }
+    const imgs = document.body?.querySelectorAll?.('img') || [];
+    for (const img of imgs) {
+      await scanImage(img);
+    }
   };
 
   const schedule = (nodes) => {
@@ -67,7 +90,22 @@ export function initDOMScanner() {
       const engines = await storage.getEngines();
       if (!engines.dom) return;
       const seen = new Set();
+      const seenImgs = new Set();
+
+      const collectImgs = (root) => {
+        if (!root) return;
+        if (root.nodeType === 1) {
+          if (root.tagName === 'IMG') seenImgs.add(root);
+          root.querySelectorAll?.('img').forEach((img) => seenImgs.add(img));
+        } else if (root.nodeType === 11) {
+          root.childNodes.forEach((ch) => collectImgs(ch));
+        }
+      };
+
       nodes.forEach((n) => {
+        collectImgs(n.nodeType === 1 || n.nodeType === 11 ? n : null);
+        if (n.nodeType === 1 && n.tagName === 'IMG') seenImgs.add(n);
+
         let el = n.nodeType === 1 ? n : n.parentElement;
         while (el && el !== document.body) {
           if (isSentientcyNode(el)) return;
@@ -79,6 +117,9 @@ export function initDOMScanner() {
       });
       for (const el of seen) {
         await scanElement(el);
+      }
+      for (const img of seenImgs) {
+        await scanImage(img);
       }
     }, DOM_DEBOUNCE_MS);
   };

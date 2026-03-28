@@ -8,7 +8,7 @@ This document is written for **human developers** and as **handoff context for o
 
 ## High-level behavior
 
-1. **DOM engine** — Watches the page with `MutationObserver`, focuses on **visually hidden** text (CSS concealment), runs the threat pipeline, and can remediate confirmed injections in the DOM.
+1. **DOM engine** — Watches the page with `MutationObserver`, focuses on **visually hidden** text (CSS concealment) and **hidden `<img>`** elements with substantive `alt` or `title`, runs the threat pipeline, and remediates confirmed injections **on the page by highlighting** (not by stripping text in place). Injected spans become `<mark data-sentientcy-injection="1">` with injected document styles; images get a visible outline and tooltip; elements that mix text with inline media use a safe path (single text-node fragment or container outline). **Surgical** stripping applies to **paste/clipboard** flows, not to live DOM text. **BLOCK** mode can still replace or clear blocked DOM content.
 2. **Clipboard engine** — Intercepts **paste** (and handles **image** pastes) on analyzable targets, runs analysis before content reaches the field, then sanitizes, blocks, or inserts content per settings.
 3. **Copy engine** — On **copy**, scans selected text if it exceeds a minimum length.
 4. **Session engine** (LLM sites only) — Observes assistant message streaming/stability, runs **single-turn** analysis on stable assistant text and **trajectory** analysis over a sliding window of conversation turns; can trigger session remediation UI.
@@ -28,8 +28,9 @@ All engines feed a shared **threat pipeline** that merges **local heuristics** +
 | Styling | **Tailwind CSS 3** (via PostCSS) for options and side panel; separate **panel.css** for shadow UI |
 | Bundling | **Webpack 5** + **Babel** (`@babel/preset-env`, `@babel/preset-react`) |
 | Build artifacts | Output in **`dist/`** — load **unpacked** from `dist/` in `chrome://extensions` |
+| Branding | **`public/icons/`** — `logo.png` plus `icon16.png` / `icon48.png` / `icon128.png` (copied into `dist/`); side panel **`LogoMark`** loads `icons/logo.png`. Source artwork may live at repo root as `Sentiency Logo.png`. |
 | LLM API | **fetch** to `https://generativelanguage.googleapis.com/v1beta/models/<MODEL>:generateContent` |
-| Model | **`gemini-3.1-flash-lite-preview`** (constant `GEMINI_MODEL` in `src/shared/constants.js`) |
+| Model | **`gemini-3.1-flash-lite-preview`** by default (`GEMINI_MODEL` in `src/shared/constants.js`); comment in that file notes stronger alternatives (e.g. `gemini-3-flash-preview`) |
 | Storage | **`chrome.storage.local`** (API key, settings, per-tab session history, threat log) |
 | PDF / OCR (npm only) | **`pdfjs-dist`**, **`tesseract.js`** are listed in `package.json` but **are not imported anywhere under `src/`** in the current tree — treat as **unused / planned** unless wired in later |
 
@@ -60,13 +61,18 @@ These run in parallel where applicable (`Promise.all` in `analyzeText` / post-pr
   - **Text**: `callGemini(prompt)` → single text part.
   - **Image**: `callGeminiWithImage(prompt, mimeType, base64Data)` → text part + part `{ inlineData: { mimeType, data } }` (camelCase for REST JSON).
 
+### Structured JSON (`src/classifier/gemini-schemas.js`)
+
+- Exports **`CLASSIFIER_RESPONSE_JSON_SCHEMA`**, **`IMAGE_COMBINED_RESPONSE_JSON_SCHEMA`**, **`IMAGE_OCR_RESPONSE_JSON_SCHEMA`**, plus matching **`…_SYSTEM_INSTRUCTION`** strings where used.
+- The Gemini client requests **`responseMimeType: application/json`** and passes **`responseJsonSchema`** in `generationConfig` so model outputs match the threat pipeline fields.
+
 ### Prompt programs (`src/classifier/prompts/`)
 
 | File | Purpose |
 |------|---------|
-| `single-turn-classify.js` | `buildSingleTurnPrompt(text, decodedText?)` — JSON schema: `injection_detected`, `confidence`, `attack_class`, `technique`, `injection_spans`, `intent`, `reasoning`. Taxonomy class names injected from `TAXONOMY_CLASS_NAMES`. |
-| `image-classify.js` | `buildImageClassifyPrompt()` — same style; adds `extracted_visible_text` and spans **relative to extracted text** (model acts as OCR + classifier). |
-| `trajectory-classify.js` | `buildTrajectoryPrompt(turns)` — JSON: `trajectory_attack_detected`, `confidence`, `attack_type`, turn indices, `safe_truncation_point`, etc. Explicitly mentions Crescendo, Deceptive Delight, in-session protocol setup, etc. |
+| `single-turn-classify.js` | `buildSingleTurnPrompt(text, decodedText?)` — aligns with classifier schema: `injection_detected`, `confidence`, `attack_class`, `technique`, `injection_spans`, `intent`, `reasoning`. Taxonomy class names from `TAXONOMY_CLASS_NAMES`. |
+| `image-classify.js` | Image / OCR-oriented prompts; `extracted_visible_text` and spans relative to extracted text where applicable. |
+| `trajectory-classify.js` | `buildTrajectoryPrompt(turns)` — trajectory JSON: `trajectory_attack_detected`, `confidence`, `attack_type`, turn indices, `safe_truncation_point`, etc. |
 
 ### Threat pipeline (`src/pipeline/threat-pipeline.js`)
 
@@ -103,7 +109,7 @@ These run in parallel where applicable (`Promise.all` in `analyzeText` / post-pr
 
 | Engine | File | Trigger / notes |
 |--------|------|------------------|
-| DOM | `dom-scanner.js` | `MutationObserver` on `document.body`, debounce **`DOM_DEBOUNCE_MS` (250ms)**; full pass aggregates text per element; per-node scans skip `data-sentientcy` subtrees. |
+| DOM | `dom-scanner.js` | `MutationObserver` on `document.body`, debounce **`DOM_DEBOUNCE_MS` (250ms)**; full pass aggregates text per hidden element; scans **hidden images** for `alt`/`title`; debounced passes also collect `<img>` nodes from added subtrees / fragments; skips `data-sentientcy` subtrees. |
 | Clipboard | `clipboard-interceptor.js` | Paste (+ `beforeinput` paths in file); image files → `analyzeImage`; text thresholds from **`PASTE_MIN_CHARS_EDITABLE` (8)**; uses `input-resolve.js` for target roots. |
 | Copy | `copy-interceptor.js` | `copy` event (capture); min **`COPY_SCAN_MIN_CHARS` (20)**. |
 | Session | `session-monitor.js` | Only if `detectPlatform()` says LLM platform; stable assistant text after **`STREAMING_STABLE_MS` (500ms)**; trajectory every **3rd** processed assistant (`trajCounter % 3 === 0`); history persisted with `storage.setSessionHistory` / append (capped in storage). |
@@ -115,8 +121,9 @@ These run in parallel where applicable (`Promise.all` in `analyzeText` / post-pr
 
 ### Remediation (`src/content/remediation/`)
 
-- **`remediation-modes.js`**: e.g. surgical vs other modes (stored in settings).
-- **DOM** / **clipboard** / **session** remediators + **field-highlighter** integrate with pipeline output and user settings (see Options).
+- **`remediation-modes.js`**: `SURGICAL`, `HIGHLIGHT`, `BLOCK` (stored in settings).
+- **`dom-remediator.js`**: Page-level handling — **non-BLOCK** modes always **visualize** threats (marks, image outline, or container outline); does not surgically delete hidden injection text in the DOM. **BLOCK** replaces text nodes or image `alt` as configured.
+- **Clipboard** / **session** remediators + **field-highlighter** honor the full remediation mode (including surgical) for paste and fields.
 
 ---
 
@@ -158,9 +165,9 @@ These run in parallel where applicable (`Promise.all` in `analyzeText` / post-pr
 
 | Surface | Entry | Notes |
 |---------|--------|--------|
-| **Side panel** | `sidepanel.html` → `Sidepanel.jsx` | Threat log, settings shortcuts, **Scan image** file upload (size cap in UI, e.g. 4MB), opens via extension action / messages |
-| **Options** | `options.html` → `Options.jsx` | API key, thresholds, engine toggles, remediation mode |
-| **In-page (content)** | Shadow-mounted `App` | `SessionHealthBar` on LLM sites, `ScanningStrip`, `ThreatPanel`, `RiskModal` |
+| **Side panel** | `sidepanel.html` → `Sidepanel.jsx` | Threat **Activity** log, **Gemini** connection pill (API key status), **Choose image** button (vision scan, ~4MB cap), **Selection** shortcuts card + `chrome://extensions/shortcuts` hint, **Protection** engine toggles, **On threat** segmented remediation control, **Clear all**; Tailwind + `sidepanel.css` (scrollbars hidden — content still scrolls). |
+| **Options** | `options.html` → `Options.jsx` | API key, thresholds, engine toggles, remediation mode; matching dark UI and hidden scrollbars |
+| **In-page (content)** | Shadow-mounted `App` | `SessionHealthBar` on LLM sites, `ScanningStrip`, `ThreatPanel`, `RiskModal` — styled in `panel.css` |
 | **Extension action** | `manifest` `action` | `sidePanel.setPanelBehavior({ openPanelOnActionClick: true })` |
 
 There is **no** `popup.html` in the manifest; primary chrome is **side panel** + **options**.
@@ -200,11 +207,13 @@ sentiency-cusor/
 ├── tailwind.config.js
 ├── postcss.config.js
 ├── plan.md                    # Original build spec (may diverge slightly from code)
-├── public/                    # Copied to dist (e.g. icons)
+├── Sentiency Logo.png         # Brand source (optional); copied into public/icons for builds
+├── public/                    # Copied to dist — icons (logo + extension sizes)
 ├── src/
 │   ├── background/service-worker.js
 │   ├── classifier/
 │   │   ├── gemini-client.js
+│   │   ├── gemini-schemas.js # JSON schemas + system snippets for generateContent
 │   │   └── prompts/          # single-turn, trajectory, image
 │   ├── content/
 │   │   ├── index.js          # early message bridge + React app + engine init

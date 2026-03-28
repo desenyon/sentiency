@@ -22,6 +22,7 @@ export const ENGINE = {
   IMAGE: 'IMAGE',
 };
 
+/** Stronger multimodal reasoning: try `gemini-3-flash-preview` or `gemini-3-pro-preview` (higher cost/latency). */
 export const GEMINI_MODEL = 'gemini-3.1-flash-lite-preview';
 
 export const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;

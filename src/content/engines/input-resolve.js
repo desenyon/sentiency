@@ -6,9 +6,28 @@ function isOurUi(el) {
   return !!el?.closest?.('#sentientcy-host');
 }
 
+/**
+ * Google Docs (and similar) often set paste target on inner chrome; resolve to the real content surface.
+ */
+function googleDocsContentRoot(target) {
+  if (typeof location === 'undefined' || !location.hostname?.includes('docs.google.com')) return null;
+  const shell = target?.closest?.('.kix-appview-editor');
+  if (!shell) return null;
+  const hit = target?.closest?.('[contenteditable="true"]');
+  if (hit && shell.contains(hit)) return hit;
+  return shell.querySelector('[contenteditable="true"]');
+}
+
 export function isEditableTarget(el) {
   if (!el || el.nodeType !== 1) return false;
   if (isOurUi(el)) return false;
+
+  const role = el.getAttribute?.('role');
+  if (role === 'textbox') {
+    const ceAttr = el.getAttribute?.('contenteditable');
+    if (ceAttr === 'false') return false;
+    if (el.isContentEditable || ceAttr === 'true' || ceAttr === '') return true;
+  }
 
   if (el.isContentEditable || el.getAttribute?.('contenteditable') === 'true') {
     const root = el.closest?.('[contenteditable="true"]') || el;
@@ -47,6 +66,9 @@ export function matchesInputArea(target, selectorString) {
 
 export function resolveInputRoot(target, platformInfo) {
   if (!target || target.nodeType !== 1) return target;
+
+  const gdocs = googleDocsContentRoot(target);
+  if (gdocs) return gdocs;
 
   const sel = platformInfo?.selectors?.inputField;
   if (sel && target.closest) {

@@ -89,8 +89,15 @@ export async function remediateClipboard(originalText, threat, inputElement, for
   if (mode === REMEDIATION_MODES.SURGICAL) {
     const spans = resolveRemovalSpans(originalText, threat);
     const clean = buildSurgicalText(originalText, spans);
-    insertTextInto(inputElement, clean);
-    showFloatingWarning(inputElement, threat, mode);
+    if (clean.length === 0 && originalText.length > 0) {
+      insertTextInto(inputElement, originalText);
+      showFloatingWarning(inputElement, threat, REMEDIATION_MODES.HIGHLIGHT);
+      const hlSpans = resolveRemovalSpans(originalText, threat);
+      attachFieldHighlight(inputElement, originalText, hlSpans, threat, REMEDIATION_MODES.HIGHLIGHT);
+    } else {
+      insertTextInto(inputElement, clean);
+      showFloatingWarning(inputElement, threat, mode);
+    }
   } else if (mode === REMEDIATION_MODES.HIGHLIGHT) {
     insertTextInto(inputElement, originalText);
     showFloatingWarning(inputElement, threat, mode);

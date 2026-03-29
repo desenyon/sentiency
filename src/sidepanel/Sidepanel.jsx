@@ -27,9 +27,16 @@ function readFileAsDataUrl(file) {
   });
 }
 
-function IconImage({ className = 'h-3.5 w-3.5' }) {
+function IconImage({ className = '' }) {
   return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+    <svg
+      className={`h-3.5 w-3.5 shrink-0 ${className}`.trim()}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      aria-hidden
+    >
       <rect x="3" y="3" width="18" height="18" rx="2" />
       <circle cx="8.5" cy="8.5" r="1.5" />
       <path d="M21 15l-5-5L5 21" />
@@ -247,7 +254,7 @@ function SidePanelApp() {
             onClick={onPickImage}
             className="sp-focus-ring sp-btn-secondary mt-4 inline-flex items-center gap-2"
           >
-            <IconImage className="h-3.5 w-3.5 opacity-80" />
+            <IconImage className="opacity-80" />
             {imageBusy ? 'Analyzing…' : 'Choose image'}
           </button>
           {imageError ? <p className="mt-3 text-[12px] text-red-400/90">{imageError}</p> : null}
@@ -401,7 +408,7 @@ function SidePanelApp() {
                         ) : null}
                         {visual ? (
                           <p className="flex items-start gap-2 text-[11px] leading-snug text-zinc-500">
-                            <IconImage className="mt-0.5 shrink-0 text-zinc-600" />
+                            <IconImage className="mt-0.5 text-zinc-600" />
                             <span>Visual signal — check source image.</span>
                           </p>
                         ) : null}
@@ -410,8 +417,11 @@ function SidePanelApp() {
                             <p className="sp-label">Image</p>
                             <img
                               src={th.previewImageDataUrl}
-                              alt=""
-                              className="mt-2 max-h-36 max-w-full border border-zinc-800 object-contain"
+                              alt="Scanned image preview"
+                              className="mt-2 block max-h-36 w-full max-w-full border border-zinc-800 object-contain object-left-top"
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                              }}
                             />
                           </div>
                         ) : null}

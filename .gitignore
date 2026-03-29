@@ -3,3 +3,7 @@ dist/
 
 # Local asset backups (not shipped)
 oldlogo.png
+
+.DS_Store
+*.crx
+*.pem

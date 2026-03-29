@@ -188,6 +188,25 @@
         align-items: flex-start;
       }
 
+      .cover-group-badge {
+        position: absolute;
+        bottom: 0;
+        right: 0;
+        margin: 0;
+        padding: 0;
+        font-size: clamp(1.75rem, 5vw, 3rem);
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        line-height: 1;
+        color: transparent;
+        background: linear-gradient(135deg, var(--cyan), var(--emerald));
+        -webkit-background-clip: text;
+        background-clip: text;
+        filter: drop-shadow(0 0 24px rgba(34, 211, 238, 0.25));
+        pointer-events: none;
+        user-select: none;
+      }
+
       .slide--media .deck-main {
         justify-content: flex-start;
         gap: 0.65rem;
@@ -1242,6 +1261,7 @@
               <span class="tag">Chrome extension</span>
               <span class="tag">Local-first</span>
             </div>
+            <p class="cover-group-badge anim-el" aria-label="Group 10">Group 10</p>
           </div>
         </div>
       </section>

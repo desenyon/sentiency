@@ -375,16 +375,6 @@
         font-size: 0.78rem;
         line-height: 1.38;
         color: var(--dim);
-        transition:
-          border-color 0.25s var(--ease-out),
-          transform 0.25s var(--ease-out),
-          box-shadow 0.25s var(--ease-out);
-      }
-
-      .engine-cell:hover {
-        border-color: rgba(34, 211, 238, 0.35);
-        transform: translateY(-2px);
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
       }
 
       .engine-cell strong {
@@ -416,15 +406,6 @@
 
       .steps li:last-child {
         border-bottom: none;
-      }
-
-      .steps li.is-pipe-focus {
-        background: rgba(34, 211, 238, 0.09);
-        border-radius: 8px;
-        border: 1px solid rgba(34, 211, 238, 0.22);
-        margin-left: -0.25rem;
-        margin-right: -0.25rem;
-        padding-left: 2.15rem;
       }
 
       .steps li::before {
@@ -584,14 +565,6 @@
         border: 1px solid var(--line);
         background: rgba(255, 255, 255, 0.02);
         overflow: hidden;
-        transition:
-          transform 0.25s var(--ease-out),
-          border-color 0.25s;
-      }
-
-      .process-cell:hover {
-        transform: translateY(-3px);
-        border-color: rgba(34, 211, 238, 0.3);
       }
 
       .process-cell img {
@@ -832,382 +805,34 @@
         display: block;
       }
 
-      .cover-art {
-        position: absolute;
-        right: clamp(-1rem, -2vw, 0);
-        top: 50%;
-        transform: translateY(-50%);
-        width: min(34vw, 280px);
-        aspect-ratio: 1;
-        pointer-events: none;
-        opacity: 0.5;
-        z-index: 0;
-      }
-
-      .cover-art svg {
-        width: 100%;
-        height: 100%;
-      }
-
-      .cover-ring {
-        fill: none;
-        stroke-width: 1.5;
-        opacity: 0.55;
-        transform-origin: center;
-        animation: coverRing 4.5s ease-in-out infinite;
-      }
-
-      .cover-ring:nth-child(1) {
-        stroke: var(--cyan);
-        animation-delay: 0s;
-      }
-
-      .cover-ring:nth-child(2) {
-        stroke: var(--emerald);
-        animation-delay: -1.5s;
-      }
-
-      .cover-ring:nth-child(3) {
-        stroke: rgba(167, 139, 250, 0.85);
-        animation-delay: -3s;
-      }
-
-      @keyframes coverRing {
-        0%,
-        100% {
-          opacity: 0.25;
-          transform: scale(0.88);
-        }
-        50% {
-          opacity: 0.7;
-          transform: scale(1);
-        }
-      }
-
-      .viz-strip {
+      .app-figure {
         flex-shrink: 0;
-        max-width: 100%;
-        margin-bottom: 0.45rem;
-        padding: 0.4rem 0.55rem;
+        width: 100%;
+        max-width: 40rem;
+        margin: 0 0 0.55rem;
+        padding: 0.5rem 0.65rem;
         border-radius: 10px;
         border: 1px solid var(--line);
         background: rgba(0, 0, 0, 0.28);
       }
 
-      .viz-attack-bars {
-        display: flex;
-        align-items: flex-end;
-        justify-content: space-between;
-        gap: 0.35rem;
-        height: 2.75rem;
-        margin-top: 0.35rem;
-      }
-
-      .viz-attack-bar {
-        flex: 1;
-        min-width: 0;
-        max-width: 3.5rem;
-        border-radius: 4px 4px 2px 2px;
-        background: linear-gradient(180deg, rgba(34, 211, 238, 0.85), rgba(52, 211, 153, 0.55));
-        height: calc(var(--h, 50) * 1%);
-        transform-origin: bottom center;
-        transition: transform 0.4s var(--ease-out), filter 0.25s;
-      }
-
-      .slide.is-active .viz-attack-bar {
-        animation: vizBarGrow 0.85s var(--ease-out) backwards;
-      }
-
-      .slide.is-active .viz-attack-bar:nth-child(1) {
-        animation-delay: 0.04s;
-      }
-
-      .slide.is-active .viz-attack-bar:nth-child(2) {
-        animation-delay: 0.1s;
-      }
-
-      .slide.is-active .viz-attack-bar:nth-child(3) {
-        animation-delay: 0.16s;
-      }
-
-      .slide.is-active .viz-attack-bar:nth-child(4) {
-        animation-delay: 0.22s;
-      }
-
-      .slide.is-active .viz-attack-bar:nth-child(5) {
-        animation-delay: 0.28s;
-      }
-
-      .viz-attack-bar:hover {
-        filter: brightness(1.15);
-        transform: scaleY(1.06);
-      }
-
-      @keyframes vizBarGrow {
-        from {
-          transform: scaleY(0);
-        }
-        to {
-          transform: scaleY(1);
-        }
-      }
-
-      .viz-attack-labels {
-        display: flex;
-        justify-content: space-between;
-        gap: 0.35rem;
-        font-size: 0.55rem;
-        font-weight: 600;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        color: var(--muted);
-      }
-
-      .viz-attack-labels span {
-        flex: 1;
-        text-align: center;
-        min-width: 0;
-      }
-
-      .viz-hub {
-        flex-shrink: 0;
-        width: 100%;
-        max-height: 3.25rem;
-        margin-bottom: 0.45rem;
-        border-radius: 10px;
-        border: 1px solid var(--line);
-        background: rgba(0, 0, 0, 0.28);
-        padding: 0.35rem 0.5rem;
-      }
-
-      .viz-hub svg {
+      .app-figure svg {
         width: 100%;
         height: auto;
-        max-height: 2.65rem;
         display: block;
       }
 
-      .viz-hub .hub-node {
-        cursor: default;
-        transition:
-          fill 0.25s,
-          stroke 0.25s;
-      }
-
-      .viz-hub:hover .hub-node {
-        fill: rgba(255, 255, 255, 0.08);
-        stroke: rgba(34, 211, 238, 0.45);
-      }
-
-      .viz-hub .hub-core {
-        transition:
-          fill 0.3s,
-          stroke 0.3s;
-      }
-
-      .viz-hub:hover .hub-core {
-        stroke: rgba(52, 211, 153, 0.65);
-      }
-
-      .pipeline-scrub {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 0.2rem;
-        margin-bottom: 0.4rem;
-      }
-
-      .pipeline-scrub-hint {
-        width: 100%;
-        font-size: 0.58rem;
-        letter-spacing: 0.1em;
-        text-transform: uppercase;
+      .app-figure-caption {
+        margin: 0.4rem 0 0;
+        font-size: 0.68rem;
+        line-height: 1.4;
         color: var(--muted);
-        margin: 0 0 0.3rem;
-        opacity: 0.75;
-      }
-
-      .pipe-node {
-        flex: 1;
-        min-width: 0;
-        margin: 0;
-        padding: 0.3rem 0.15rem;
-        border-radius: 8px;
-        border: 1px solid var(--line);
-        background: rgba(255, 255, 255, 0.04);
-        color: var(--muted);
-        font-family: 'IBM Plex Mono', ui-monospace, monospace;
-        font-size: 0.62rem;
-        font-weight: 600;
-        cursor: pointer;
-        transition:
-          border-color 0.2s,
-          color 0.2s,
-          background 0.2s,
-          box-shadow 0.2s;
-      }
-
-      .pipe-node:hover {
-        color: var(--fg);
-        border-color: rgba(167, 139, 250, 0.4);
-      }
-
-      .pipe-node.is-on {
-        color: var(--bg);
-        background: linear-gradient(135deg, var(--cyan), var(--emerald));
-        border-color: transparent;
-        box-shadow: 0 0 16px rgba(34, 211, 238, 0.25);
-      }
-
-      .viz-layers {
-        flex-shrink: 0;
-        display: flex;
-        flex-direction: column;
-        gap: 0.25rem;
-        max-width: 11rem;
-        margin-bottom: 0.5rem;
-      }
-
-      .viz-layer {
-        height: 0.55rem;
-        border-radius: 6px;
-        border: 1px solid var(--line);
-        background: linear-gradient(90deg, rgba(34, 211, 238, 0.15), rgba(52, 211, 153, 0.12));
-        transform-origin: left center;
-        transition:
-          transform 0.35s var(--ease-out),
-          opacity 0.35s;
-      }
-
-      .viz-layer:nth-child(1) {
-        width: 100%;
-      }
-
-      .viz-layer:nth-child(2) {
-        width: 88%;
-        opacity: 0.88;
-      }
-
-      .viz-layer:nth-child(3) {
-        width: 72%;
-        opacity: 0.72;
-      }
-
-      .slide.is-active .viz-layer {
-        animation: layerSlide 0.7s var(--ease-out) backwards;
-      }
-
-      .slide.is-active .viz-layer:nth-child(2) {
-        animation-delay: 0.08s;
-      }
-
-      .slide.is-active .viz-layer:nth-child(3) {
-        animation-delay: 0.16s;
-      }
-
-      @keyframes layerSlide {
-        from {
-          transform: scaleX(0);
-        }
-        to {
-          transform: scaleX(1);
-        }
-      }
-
-      .viz-layer-wrap:hover .viz-layer {
-        filter: brightness(1.12);
-      }
-
-      .viz-arch {
-        flex-shrink: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 0.35rem;
-        flex-wrap: wrap;
-        margin-bottom: 0.45rem;
-        padding: 0.4rem 0.5rem;
-        border-radius: 10px;
-        border: 1px solid var(--line);
-        background: rgba(0, 0, 0, 0.28);
-      }
-
-      .viz-arch-block {
-        padding: 0.28rem 0.45rem;
-        border-radius: 8px;
-        border: 1px solid var(--line);
-        background: rgba(255, 255, 255, 0.04);
-        font-size: 0.58rem;
-        font-weight: 700;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        color: var(--dim);
-        transition:
-          border-color 0.25s,
-          transform 0.25s var(--ease-out);
-      }
-
-      .viz-arch-block:hover {
-        border-color: rgba(34, 211, 238, 0.4);
-        transform: translateY(-2px);
-      }
-
-      .viz-arch-block--accent {
-        border-color: rgba(34, 211, 238, 0.35);
-        color: var(--cyan);
-      }
-
-      .viz-arch-arrow {
-        color: var(--muted);
-        font-size: 0.65rem;
-        opacity: 0.55;
-        user-select: none;
-      }
-
-      .viz-demo-flow {
-        flex-shrink: 0;
-        width: 100%;
-        margin-bottom: 0.4rem;
-        padding: 0.35rem 0.5rem;
-        border-radius: 10px;
-        border: 1px solid var(--line);
-        background: rgba(0, 0, 0, 0.28);
-      }
-
-      .viz-demo-flow svg {
-        width: 100%;
-        height: auto;
-        max-height: 2.25rem;
-        display: block;
-      }
-
-      .flow-dash {
-        stroke-dasharray: 6 5;
-        animation: flowDash 1.1s linear infinite;
-      }
-
-      @keyframes flowDash {
-        to {
-          stroke-dashoffset: -11;
-        }
       }
 
       @media (prefers-reduced-motion: reduce) {
         .slide,
         .progress-fill {
           transition: none;
-        }
-
-        .cover-ring,
-        .viz-attack-bar,
-        .viz-layer,
-        .flow-dash {
-          animation: none !important;
-        }
-
-        .slide.is-active .viz-attack-bar,
-        .slide.is-active .viz-layer {
-          animation: none !important;
         }
       }
     </style>
@@ -1220,21 +845,12 @@
     <div class="progress-track" aria-hidden="true"><div class="progress-fill" id="prog"></div></div>
 
     <nav class="dots" id="dots" aria-label="Slides"></nav>
-    <p class="nav-hint" aria-hidden="true">
-      Arrows · Space · Home / End · R replay · pipeline tap · hover visuals · click photos to zoom
-    </p>
+    <p class="nav-hint" aria-hidden="true">Arrows · Space · Home / End · R replay · click photos to zoom</p>
 
     <main class="deck" id="deck" aria-live="polite">
       <!-- 1 cover -->
       <section class="slide slide--cover is-active" data-slide="1">
         <div class="slide-shell">
-          <div class="cover-art anim-el" aria-hidden="true">
-            <svg viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle class="cover-ring" cx="100" cy="100" r="78" />
-              <circle class="cover-ring" cx="100" cy="100" r="54" />
-              <circle class="cover-ring" cx="100" cy="100" r="30" />
-            </svg>
-          </div>
           <header class="deck-head">
             <span class="deck-brand">Hackathon · Judges</span>
             <span class="deck-num">01 / 14</span>
@@ -1304,22 +920,6 @@
           <div class="deck-main">
             <p class="eyebrow anim-el">Context</p>
             <h2 class="slide-title anim-el">Why we built it</h2>
-            <div class="viz-strip viz-attack anim-el" aria-hidden="true">
-              <div class="viz-attack-labels">
-                <span>DOM</span>
-                <span>Paste</span>
-                <span>Img</span>
-                <span>Chat</span>
-                <span>Copy</span>
-              </div>
-              <div class="viz-attack-bars">
-                <div class="viz-attack-bar" style="--h: 92"></div>
-                <div class="viz-attack-bar" style="--h: 78"></div>
-                <div class="viz-attack-bar" style="--h: 72"></div>
-                <div class="viz-attack-bar" style="--h: 86"></div>
-                <div class="viz-attack-bar" style="--h: 64"></div>
-              </div>
-            </div>
             <p class="section-label anim-el">Inspiration</p>
             <p class="slide-lead anim-el" style="margin-top: 0">
               Prompt-injection awareness at a Google campus hackathon made it concrete: user safety, not only a model problem.
@@ -1345,27 +945,42 @@
             <p class="eyebrow anim-el">Product</p>
             <h2 class="slide-title anim-el">Six engines · one shield</h2>
             <p class="slide-lead anim-el">Coverage across the surfaces where injection actually happens. All paths feed one pipeline.</p>
-            <div class="viz-hub anim-el" aria-hidden="true">
-              <svg viewBox="0 0 420 44" xmlns="http://www.w3.org/2000/svg">
-                <line x1="28" y1="22" x2="392" y2="22" stroke="rgba(255,255,255,0.07)" stroke-width="1" />
-                <circle class="hub-node" cx="40" cy="22" r="5" stroke="rgba(113,113,122,0.95)" fill="rgba(255,255,255,0.05)" />
-                <circle class="hub-node" cx="102" cy="22" r="5" stroke="rgba(113,113,122,0.95)" fill="rgba(255,255,255,0.05)" />
-                <circle class="hub-node" cx="164" cy="22" r="5" stroke="rgba(113,113,122,0.95)" fill="rgba(255,255,255,0.05)" />
-                <rect
-                  class="hub-core"
-                  x="186"
-                  y="10"
-                  width="48"
-                  height="24"
-                  rx="8"
-                  stroke="rgba(34,211,238,0.55)"
-                  fill="rgba(34,211,238,0.1)"
-                />
-                <circle class="hub-node" cx="256" cy="22" r="5" stroke="rgba(113,113,122,0.95)" fill="rgba(255,255,255,0.05)" />
-                <circle class="hub-node" cx="318" cy="22" r="5" stroke="rgba(113,113,122,0.95)" fill="rgba(255,255,255,0.05)" />
-                <circle class="hub-node" cx="380" cy="22" r="5" stroke="rgba(113,113,122,0.95)" fill="rgba(255,255,255,0.05)" />
+            <figure class="app-figure anim-el">
+              <svg viewBox="0 0 520 100" xmlns="http://www.w3.org/2000/svg" aria-labelledby="fig-placement-title">
+                <title id="fig-placement-title">Web inputs, Sentiency extension, then AI chat</title>
+                <defs>
+                  <marker id="mArrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+                    <path d="M0,0 L7,3.5 L0,7 Z" fill="#52525b" />
+                  </marker>
+                </defs>
+                <rect x="6" y="16" width="132" height="68" rx="10" stroke="#3f3f46" fill="rgba(255,255,255,0.04)" />
+                <text x="72" y="44" text-anchor="middle" fill="#a1a1aa" font-size="10" font-family="system-ui, sans-serif">
+                  Page, paste,
+                </text>
+                <text x="72" y="58" text-anchor="middle" fill="#a1a1aa" font-size="10" font-family="system-ui, sans-serif">
+                  images, session
+                </text>
+                <line x1="142" y1="50" x2="176" y2="50" stroke="#52525b" stroke-width="1.5" marker-end="url(#mArrow)" />
+                <rect x="182" y="22" width="124" height="56" rx="10" stroke="rgba(34,211,238,0.55)" fill="rgba(34,211,238,0.08)" />
+                <text x="244" y="48" text-anchor="middle" fill="#fafafa" font-size="11" font-weight="600" font-family="system-ui, sans-serif">
+                  Sentiency
+                </text>
+                <text x="244" y="64" text-anchor="middle" fill="#71717a" font-size="9" font-family="system-ui, sans-serif">
+                  Chrome extension
+                </text>
+                <line x1="310" y1="50" x2="344" y2="50" stroke="#52525b" stroke-width="1.5" marker-end="url(#mArrow)" />
+                <rect x="350" y="16" width="164" height="68" rx="10" stroke="#3f3f46" fill="rgba(255,255,255,0.04)" />
+                <text x="432" y="48" text-anchor="middle" fill="#a1a1aa" font-size="10" font-family="system-ui, sans-serif">
+                  AI chat / model
+                </text>
+                <text x="432" y="62" text-anchor="middle" fill="#71717a" font-size="9" font-family="system-ui, sans-serif">
+                  only if input passes
+                </text>
               </svg>
-            </div>
+              <figcaption class="app-figure-caption">
+                Where the product sits: it runs in Chrome and evaluates risky input before it reaches the assistant.
+              </figcaption>
+            </figure>
             <div class="engine-grid anim-el">
               <div class="engine-cell anim-el">
                 <strong>DOM engine</strong>
@@ -1406,25 +1021,49 @@
           <div class="deck-main">
             <p class="eyebrow anim-el">Architecture</p>
             <h2 class="slide-title anim-el">One threat pipeline</h2>
-            <p class="pipeline-scrub-hint anim-el">Tap a stage to highlight</p>
-            <div class="pipeline-scrub viz-strip anim-el" role="group" aria-label="Highlight pipeline step">
-              <button type="button" class="pipe-node" data-vstep="0">1</button>
-              <button type="button" class="pipe-node" data-vstep="1">2</button>
-              <button type="button" class="pipe-node" data-vstep="2">3</button>
-              <button type="button" class="pipe-node" data-vstep="3">4</button>
-              <button type="button" class="pipe-node" data-vstep="4">5</button>
-              <button type="button" class="pipe-node" data-vstep="5">6</button>
-            </div>
-            <ol class="steps anim-el" id="pipe-list">
-              <li class="anim-el" data-vstep="0">Input — DOM, clipboard, session, copy, selection, image.</li>
-              <li class="anim-el" data-vstep="1">Local heuristics — visibility, Unicode, encoding, instruction patterns.</li>
-              <li class="anim-el" data-vstep="2">
+            <figure class="app-figure anim-el">
+              <svg viewBox="0 0 600 76" xmlns="http://www.w3.org/2000/svg" aria-labelledby="fig-pipe-title">
+                <title id="fig-pipe-title">Six pipeline stages from detection to user action</title>
+                <g font-family="system-ui, sans-serif" font-size="8" fill="#a1a1aa" text-anchor="middle">
+                  <rect x="4" y="12" width="88" height="40" rx="6" stroke="#3f3f46" fill="rgba(255,255,255,0.04)" />
+                  <text x="48" y="30">1 · Capture</text>
+                  <text x="48" y="42">inputs</text>
+                  <rect x="98" y="12" width="88" height="40" rx="6" stroke="#3f3f46" fill="rgba(255,255,255,0.04)" />
+                  <text x="142" y="30">2 · Local</text>
+                  <text x="142" y="42">heuristics</text>
+                  <rect x="192" y="12" width="88" height="40" rx="6" stroke="rgba(34,211,238,0.4)" fill="rgba(34,211,238,0.06)" />
+                  <text x="236" y="30">3 · Gemini</text>
+                  <text x="236" y="42">classify</text>
+                  <rect x="286" y="12" width="88" height="40" rx="6" stroke="#3f3f46" fill="rgba(255,255,255,0.04)" />
+                  <text x="330" y="30">4 · Confirm</text>
+                  <text x="330" y="42">threat</text>
+                  <rect x="380" y="12" width="88" height="40" rx="6" stroke="#3f3f46" fill="rgba(255,255,255,0.04)" />
+                  <text x="424" y="30">5 · Score &amp;</text>
+                  <text x="424" y="42">spans</text>
+                  <rect x="474" y="12" width="122" height="40" rx="6" stroke="#3f3f46" fill="rgba(255,255,255,0.04)" />
+                  <text x="535" y="30">6 · Side panel</text>
+                  <text x="535" y="42">+ remediate</text>
+                </g>
+                <line x1="92" y1="32" x2="98" y2="32" stroke="#52525b" stroke-width="1.25" />
+                <line x1="186" y1="32" x2="192" y2="32" stroke="#52525b" stroke-width="1.25" />
+                <line x1="280" y1="32" x2="286" y2="32" stroke="#52525b" stroke-width="1.25" />
+                <line x1="374" y1="32" x2="380" y2="32" stroke="#52525b" stroke-width="1.25" />
+                <line x1="468" y1="32" x2="474" y2="32" stroke="#52525b" stroke-width="1.25" />
+              </svg>
+              <figcaption class="app-figure-caption">
+                Same path every signal follows: local checks, then schema-locked Gemini classification, then UI and fixes.
+              </figcaption>
+            </figure>
+            <ol class="steps anim-el">
+              <li class="anim-el">Input — DOM, clipboard, session, copy, selection, image.</li>
+              <li class="anim-el">Local heuristics — visibility, Unicode, encoding, instruction patterns.</li>
+              <li class="anim-el">
                 Google Generative Language API — <span class="mono">generateContent</span>, JSON +
                 <span class="mono">responseJsonSchema</span>.
               </li>
-              <li class="anim-el" data-vstep="3">Confirmation — thresholds and local corroboration.</li>
-              <li class="anim-el" data-vstep="4">Taxonomy, severity, character-level injection spans.</li>
-              <li class="anim-el" data-vstep="5">Persist, notify UI, remediate — warn, highlight, sanitize, block.</li>
+              <li class="anim-el">Confirmation — thresholds and local corroboration.</li>
+              <li class="anim-el">Taxonomy, severity, character-level injection spans.</li>
+              <li class="anim-el">Persist, notify UI, remediate — warn, highlight, sanitize, block.</li>
             </ol>
             <div class="callouts anim-el">
               <span class="callout">Hidden text</span>
@@ -1447,13 +1086,34 @@
           <div class="deck-main">
             <p class="eyebrow anim-el">Differentiation</p>
             <h2 class="slide-title anim-el">Browser-native · honest privacy</h2>
-            <div class="viz-layer-wrap anim-el" aria-hidden="true">
-              <div class="viz-layers">
-                <div class="viz-layer"></div>
-                <div class="viz-layer"></div>
-                <div class="viz-layer"></div>
-              </div>
-            </div>
+            <figure class="app-figure anim-el">
+              <svg viewBox="0 0 440 72" xmlns="http://www.w3.org/2000/svg" aria-labelledby="fig-trust-title">
+                <title id="fig-trust-title">Local extension versus outbound Gemini call</title>
+                <defs>
+                  <marker id="trustArrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+                    <path d="M0,0 L7,3.5 L0,7 Z" fill="#52525b" />
+                  </marker>
+                </defs>
+                <rect x="6" y="14" width="170" height="44" rx="8" stroke="#3f3f46" fill="rgba(255,255,255,0.04)" />
+                <text x="91" y="34" text-anchor="middle" fill="#a1a1aa" font-size="10" font-family="system-ui, sans-serif">
+                  Extension + device
+                </text>
+                <text x="91" y="48" text-anchor="middle" fill="#71717a" font-size="9" font-family="system-ui, sans-serif">
+                  settings &amp; threat log stay local
+                </text>
+                <line x1="178" y1="36" x2="212" y2="36" stroke="#52525b" stroke-width="1.5" marker-end="url(#trustArrow)" />
+                <rect x="218" y="14" width="216" height="44" rx="8" stroke="rgba(34,211,238,0.45)" fill="rgba(34,211,238,0.06)" />
+                <text x="326" y="34" text-anchor="middle" fill="#a1a1aa" font-size="10" font-family="system-ui, sans-serif">
+                  Gemini (your API key)
+                </text>
+                <text x="326" y="48" text-anchor="middle" fill="#71717a" font-size="9" font-family="system-ui, sans-serif">
+                  classification only · no Sentiency cloud
+                </text>
+              </svg>
+              <figcaption class="app-figure-caption">
+                Trust model in one view: local-first storage and UI; a single outbound call for scoring when needed.
+              </figcaption>
+            </figure>
             <ul class="bullets anim-el">
               <li class="anim-el"><strong style="color: var(--fg)">Runs in the browser</strong> — where users actually work.</li>
               <li class="anim-el"><strong style="color: var(--fg)">No Sentiency backend</strong> — we do not host your traffic.</li>
@@ -1589,13 +1249,6 @@
           <div class="deck-main">
             <p class="eyebrow anim-el">Implementation</p>
             <h2 class="slide-title anim-el">Stack and local algorithms</h2>
-            <div class="viz-arch anim-el" aria-hidden="true">
-              <span class="viz-arch-block">Local</span>
-              <span class="viz-arch-arrow" aria-hidden="true">→</span>
-              <span class="viz-arch-block viz-arch-block--accent">Extension</span>
-              <span class="viz-arch-arrow" aria-hidden="true">→</span>
-              <span class="viz-arch-block">Gemini API</span>
-            </div>
             <div class="two-col anim-el">
               <div class="anim-el">
                 <h3>Application stack</h3>
@@ -1683,49 +1336,6 @@
           <div class="deck-main">
             <p class="eyebrow anim-el">Live</p>
             <h2 class="slide-title anim-el">Demo — before it reaches the model</h2>
-            <div class="viz-demo-flow anim-el" aria-hidden="true">
-              <svg viewBox="0 0 360 36" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                  <linearGradient id="demoFlowGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                    <stop offset="0%" stop-color="#22d3ee" />
-                    <stop offset="100%" stop-color="#34d399" />
-                  </linearGradient>
-                </defs>
-                <rect x="4" y="8" width="62" height="20" rx="6" stroke="rgba(113,113,122,0.65)" fill="rgba(255,255,255,0.04)" />
-                <path
-                  class="flow-dash"
-                  d="M 68 18 L 122 18"
-                  stroke="url(#demoFlowGrad)"
-                  stroke-width="1.5"
-                  fill="none"
-                />
-                <rect
-                  x="124"
-                  y="8"
-                  width="88"
-                  height="20"
-                  rx="6"
-                  stroke="rgba(34,211,238,0.5)"
-                  fill="rgba(34,211,238,0.1)"
-                />
-                <path
-                  class="flow-dash"
-                  d="M 214 18 L 268 18"
-                  stroke="url(#demoFlowGrad)"
-                  stroke-width="1.5"
-                  fill="none"
-                />
-                <rect
-                  x="270"
-                  y="8"
-                  width="86"
-                  height="20"
-                  rx="6"
-                  stroke="rgba(52,211,153,0.5)"
-                  fill="rgba(52,211,153,0.08)"
-                />
-              </svg>
-            </div>
             <div class="demo-tabs anim-el" role="tablist" aria-label="Demo screenshots">
               <button type="button" class="demo-tab is-on" data-which="both" role="tab" aria-selected="true">Both</button>
               <button type="button" class="demo-tab" data-which="activity" role="tab" aria-selected="false">Activity only</button>
@@ -1854,21 +1464,6 @@
         });
         setDemoLayout('both');
 
-        function clearPipeFocus() {
-          document.querySelectorAll('#pipe-list li.is-pipe-focus').forEach((li) => li.classList.remove('is-pipe-focus'));
-          document.querySelectorAll('.pipe-node.is-on').forEach((b) => b.classList.remove('is-on'));
-        }
-
-        document.querySelectorAll('.pipe-node').forEach((btn) => {
-          btn.addEventListener('click', () => {
-            const step = btn.getAttribute('data-vstep');
-            document.querySelectorAll('.pipe-node').forEach((b) => b.classList.toggle('is-on', b === btn));
-            document.querySelectorAll('#pipe-list li').forEach((li) => {
-              li.classList.toggle('is-pipe-focus', li.getAttribute('data-vstep') === step);
-            });
-          });
-        });
-
         slides.forEach((_, idx) => {
           const b = document.createElement('button');
           b.type = 'button';
@@ -1883,7 +1478,6 @@
         function go(n) {
           const next = Math.max(0, Math.min(slides.length - 1, n));
           if (next === i) return;
-          clearPipeFocus();
           i = next;
           slides.forEach((s, idx) => s.classList.toggle('is-active', idx === i));
           dotEls().forEach((d, idx) => d.classList.toggle('is-on', idx === i));

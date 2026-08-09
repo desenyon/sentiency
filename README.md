@@ -248,3 +248,87 @@ sentiency-cusor/
 ## Version
 
 `package.json` / `manifest.json`: **1.0.0** / name **Sentiency**.
+
+<!-- architecture-atlas-v5:start -->
+## Architecture Atlas v5
+
+These editable Mermaid diagrams mirror the [Notion architecture dossier](https://app.notion.com/p/3b467342e8c181b2af2ae5690070d5a5?pvs=204).
+
+### 1. Threat-boundary anatomy
+
+```mermaid
+flowchart LR
+  PAGE["Web page + user gestures"] --> CAPTURE["Content script collectors<br>DOM mutations, copy, paste, images, manual scan"]
+  CAPTURE --> CANON["Unicode canonicalizer + visibility analysis"]
+  CANON --> LOCAL["Local detector ensemble<br>instructions, encoding, obfuscation, hidden text"]
+  LOCAL --> SCORE["Evidence-preserving local score"]
+  SCORE --> POLICY{"Privacy and remote-classification policy"}
+  POLICY -->|local only| SEVERITY["Taxonomy + severity policy"]
+  POLICY -->|configured opt-in| BG["Manifest V3 service worker"] --> GEMINI["Structured Gemini classifier"] --> SEVERITY
+  SEVERITY --> REMEDY["Warn, highlight, block, sanitize, suppress or allow"]
+  REMEDY --> UI["Side panel + options UI"]
+  SEVERITY --> STORE[("Findings, settings, allow/deny patterns")]
+  TRAJ["Supported AI-session trajectory events"] --> TIMELINE["Cross-turn risk analyzer"] --> STORE
+```
+
+### 2. Detection and remediation wiring
+
+```mermaid
+flowchart TB
+  RAW["Potentially hostile page or clipboard content"] --> MIN["Minimize payload and preserve origin metadata"]
+  MIN --> DETECT["Parallel local detectors"]
+  DETECT --> EVIDENCE["Matched spans, detector IDs, confidence"]
+  EVIDENCE --> DECIDE{"Remote classifier required and allowed?"}
+  DECIDE -->|no| MAP["Local taxonomy mapping"]
+  DECIDE -->|yes| REQUEST["Fenced structured request"] --> REMOTE["Remote classification"] --> MAP
+  MAP --> ACTION{"Severity + user policy"}
+  ACTION --> ALLOW["Allow / annotate"]
+  ACTION --> WARN["Warn / highlight"]
+  ACTION --> BLOCK["Block / sanitize"]
+  ALLOW --> LOG[("Per-tab trajectory and finding log")]
+  WARN --> LOG
+  BLOCK --> LOG
+  LOG --> PANEL["Explain evidence and reversible remediation"]
+```
+
+### 3. Runtime narrative
+
+```mermaid
+sequenceDiagram
+  actor User
+  participant C as Content Script
+  participant L as Local Detectors
+  participant B as Background Worker
+  participant R as Remote Classifier
+  participant U as Side Panel / Storage
+  User->>C: page mutation, copy, paste, image or manual scan
+  C->>L: canonicalized visible and hidden content
+  L-->>C: local evidence, score and matched attack classes
+  C->>B: minimal structured finding candidate
+  alt remote classification configured and necessary
+    B->>R: privacy-minimized fenced request
+    R-->>B: taxonomy, severity, confidence, remediation
+  end
+  B->>U: persist evidence and update risk timeline
+  U-->>C: allow, warn, highlight, sanitize or block
+  C-->>User: reversible intervention with explanation
+```
+
+### 4. Reliability model
+
+```mermaid
+stateDiagram-v2
+  [*] --> IDLE
+  IDLE --> CAPTURING --> LOCAL_SCAN
+  LOCAL_SCAN --> REMOTE_CLASSIFY: opt-in and uncertainty threshold met
+  LOCAL_SCAN --> FINDING: local decision sufficient
+  REMOTE_CLASSIFY --> FINDING
+  FINDING --> REMEDIATING
+  REMEDIATING --> SUPPRESSED
+  REMEDIATING --> ALLOWED
+  LOCAL_SCAN --> PRIVACY_BLOCKED: remote payload disallowed
+  REMOTE_CLASSIFY --> ERROR: timeout or classifier failure
+  ERROR --> FINDING: degrade to local evidence
+```
+
+<!-- architecture-atlas-v5:end -->

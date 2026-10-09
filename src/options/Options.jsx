@@ -215,7 +215,7 @@ function OptionsApp() {
                   </span>
                   <input
                     type="checkbox"
-                    className="mt-1 h-4 w-4 shrink-0 rounded border-zinc-600 bg-zinc-900 accent-white"
+                    className="mt-1 h-4 w-4 shrink-0 rounded-sm border-zinc-600 bg-zinc-900 accent-white"
                     checked={!!engines[k]}
                     onChange={() => setEngines((e) => ({ ...e, [k]: !e[k] }))}
                   />
@@ -268,7 +268,7 @@ function OptionsApp() {
         </p>
       </div>
 
-      <footer className="fixed bottom-0 left-0 right-0 border-t border-zinc-800/90 bg-zinc-950/95 px-6 py-4 backdrop-blur-sm">
+      <footer className="fixed bottom-0 left-0 right-0 border-t border-zinc-800/90 bg-zinc-950/95 px-6 py-4 backdrop-blur-xs">
         <div className="mx-auto flex max-w-lg items-center justify-between gap-4">
           <p className="text-[11px] text-zinc-600">Unsaved changes need Save.</p>
           <button

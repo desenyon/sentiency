@@ -1,7 +1,8 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  content: ['./src/**/*.{js,jsx}', './src/**/*.html'],
   theme: {
+    // Retain the established sRGB palette across the Tailwind 4 migration.
+    colors: require('./src/shared/legacy-palette.json'),
     extend: {
       colors: {
         matte: {

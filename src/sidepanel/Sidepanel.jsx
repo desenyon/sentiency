@@ -294,7 +294,7 @@ function SidePanelApp() {
           <p className="mt-3 max-w-[300px] text-[12px] leading-snug text-zinc-500">
             Auto on pages; selection scan uses the context menu.
           </p>
-          <ul className="mt-5 list-none border-t border-zinc-800/70 p-0 divide-y divide-zinc-800/50">
+          <ul className="mt-5 list-none border-t border-zinc-800/70 p-0 sp-engine-list">
             {engineList.map(({ group, showGroup, key, title, sub }) => (
               <li key={key}>
                 {showGroup ? (
@@ -307,7 +307,7 @@ function SidePanelApp() {
                   </span>
                   <input
                     type="checkbox"
-                    className="mt-1 h-4 w-4 shrink-0 cursor-pointer rounded border-zinc-600 bg-zinc-900 text-white accent-white"
+                    className="mt-1 h-4 w-4 shrink-0 cursor-pointer rounded-sm border-zinc-600 bg-zinc-900 text-white accent-white"
                     checked={engines ? !!engines[key] : true}
                     onChange={() => toggleEngine(key)}
                   />

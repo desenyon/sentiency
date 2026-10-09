@@ -1,22 +1,23 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './options.css';
-import { storage } from '../shared/storage';
+import { storage, DEFAULT_ENGINES } from '../shared/storage';
 import { LogoMark } from '../shared/LogoMark';
 import { REMEDIATION_MODES, GEMINI_API_URL, GEMINI_MODEL } from '../shared/constants';
 
 async function testGeminiKey(key) {
-  const url = `${GEMINI_API_URL}?key=${encodeURIComponent(key)}`;
+  const url = GEMINI_API_URL;
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+    signal: AbortSignal.timeout(12000),
     body: JSON.stringify({
       contents: [{ parts: [{ text: 'Reply with exactly the word OK and nothing else.' }] }],
       generationConfig: { maxOutputTokens: 8, temperature: 0 },
     }),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.error?.message || res.statusText);
+  if (!res.ok) throw new Error(`API returned HTTP ${res.status}`);
   const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
   if (!text) throw new Error('Empty model response');
   return text;
@@ -26,7 +27,8 @@ function OptionsApp() {
   const [key, setKey] = useState('');
   const [mode, setMode] = useState(REMEDIATION_MODES.SURGICAL);
   const [threshold, setThreshold] = useState(0.65);
-  const [engines, setEngines] = useState({ dom: true, clipboard: true, session: true, copy: true });
+  const [engines, setEngines] = useState(DEFAULT_ENGINES);
+  const [remote, setRemote] = useState(false);
   const [testStatus, setTestStatus] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -35,15 +37,16 @@ function OptionsApp() {
       const k = await storage.getApiKey();
       const s = await storage.getSettings();
       setKey(k || '');
+      setRemote(s.remoteAnalysisEnabled);
       setMode(s.remediationMode || REMEDIATION_MODES.SURGICAL);
       setThreshold(typeof s.confidenceThreshold === 'number' ? s.confidenceThreshold : 0.65);
-      setEngines(s.engines || { dom: true, clipboard: true, session: true, copy: true });
+      setEngines(s.engines || DEFAULT_ENGINES);
     })();
   }, []);
 
   const saveKey = async () => {
-    await storage.setApiKey(key.trim());
-    setTestStatus('API key saved.');
+    try { await storage.setApiKey(key.trim()); setTestStatus('API key saved.'); }
+    catch { setTestStatus('Key could not be saved.'); }
   };
 
   const runTest = async () => {
@@ -60,12 +63,13 @@ function OptionsApp() {
   };
 
   const saveAll = async () => {
-    await storage.setSettings({
+    try { await storage.setSettings({
+      remoteAnalysisEnabled: remote,
       remediationMode: mode,
       confidenceThreshold: threshold,
       engines,
     });
-    setTestStatus('Saved.');
+    setTestStatus('Saved.'); } catch { setTestStatus('Settings could not be saved.'); }
   };
 
   const exportLog = async () => {
@@ -81,15 +85,13 @@ function OptionsApp() {
 
   const wipe = async () => {
     if (!window.confirm('Clear API key, threats, and all local extension data?')) return;
-    await storage.setApiKey('');
-    await storage.clearThreats();
     try {
-      await chrome.storage.local.clear();
+      await storage.clearAll();
     } catch {
-      setTestStatus('Partial clear only.');
+      setTestStatus('Could not confirm that local data was cleared.');
       return;
     }
-    setKey('');
+    setKey(''); setRemote(false); setEngines(DEFAULT_ENGINES);
     setTestStatus('Cleared.');
   };
 
@@ -134,9 +136,14 @@ function OptionsApp() {
         <section className="border-b border-zinc-800/80 py-10">
           <p className="opt-label">Gemini</p>
           <p className="mt-4 text-[13px] leading-relaxed text-zinc-400">
-            Key stays in <span className="text-zinc-300">chrome.storage.local</span> only. Model{' '}
+            The key is stored in <span className="text-zinc-300">chrome.storage.local</span> and sent to Google for authentication. Model{' '}
             <span className="font-mono text-[12px] text-zinc-300">{GEMINI_MODEL}</span>
           </p>
+          <label className="mt-4 flex items-start gap-3 text-[13px] text-zinc-300">
+            <input type="checkbox" checked={remote} onChange={(e) => setRemote(e.target.checked)} />
+            <span>Allow remote analysis. Enabled engines and manual scans may send page text, copied or pasted text, conversation turns, and uploaded images to Google Gemini. A key alone does not enable this. Logs retain metadata only. Credential fields are excluded, but secrets in ordinary text are not automatically redacted.</span>
+          </label>
+          <p className="mt-3 text-[12px] text-zinc-400">Test sends a fixed test prompt to Google when clicked, independently of this setting.</p>
           <input
             type="password"
             className="opt-input mt-6"

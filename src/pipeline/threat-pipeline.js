@@ -1,3 +1,6 @@
+import { threatMetadata } from '../shared/privacy';
+import { TRAJECTORY_SCHEMA } from '../classifier/validate-response';
+import { contentEvents } from '../content/events';
 import { detectUnicodeAnomalies } from '../detectors/unicode-detector';
 import { detectInstructionPatterns } from '../detectors/instruction-pattern';
 import { detectEncodings } from '../detectors/encoding-detector';
@@ -47,12 +50,12 @@ function emptyToNull(v) {
   return s === '' ? null : String(v);
 }
 
-async function persistAndBroadcastThreat(threat, dispatchWindowEvent) {
-  await storage.logThreat(threat);
-  safeRuntimeSendMessage({ type: 'THREAT_DETECTED', threat });
+export async function persistAndBroadcastThreat(threat, dispatchWindowEvent) {
+  try { await storage.logThreat(threat); } catch { threat.persistenceError = true; }
+  safeRuntimeSendMessage({ type: 'THREAT_DETECTED', threat: threatMetadata(threat) });
   if (dispatchWindowEvent) {
     try {
-      window.dispatchEvent(new CustomEvent('sentientcy-threat-detected', { detail: threat }));
+      contentEvents.dispatchEvent(new CustomEvent('sentientcy-threat-detected', { detail: threat }));
     } catch {
       /* ignore */
     }
@@ -77,7 +80,8 @@ function canonicalTranscriptFromOcrJson(parsed) {
 /**
  * Legacy single vision call: classify + extract in one shot (used as fallback).
  */
-async function analyzeImageVisionSinglePass(mimeType, base64Data, source, threshold, dispatchWindowEvent) {
+async function analyzeImageVisionSinglePass(mimeType, base64Data, source, threshold, dispatchWindowEvent, options = {}) {
+  if (options.isCurrent && !options.isCurrent()) throw new AnalysisUnavailableError('stale_target');
   const prompt = buildImageClassifyPrompt();
   const gemini = await callGeminiWithImage(prompt, mimeType, base64Data, {
     generationConfig: {
@@ -99,6 +103,7 @@ async function analyzeImageVisionSinglePass(mimeType, base64Data, source, thresh
   const inj = geminiOk && gemini.injection_detected === true;
   const conf = geminiOk ? Number(gemini.confidence) || 0 : 0;
 
+  if (options.isCurrent && !options.isCurrent()) throw new AnalysisUnavailableError('stale_target');
   if (!inj || conf < threshold) return null;
 
   const extracted =
@@ -160,7 +165,8 @@ async function analyzeImageVisionSinglePass(mimeType, base64Data, source, thresh
     imagePipeline: 'vision_single_pass',
   };
 
-  await persistAndBroadcastThreat(threat, dispatchWindowEvent);
+  if (options.isCurrent && !options.isCurrent()) throw new AnalysisUnavailableError('stale_target');
+  if (!options.skipPersist) await persistAndBroadcastThreat(threat, dispatchWindowEvent);
   return threat;
 }
 
@@ -177,13 +183,15 @@ async function analyzeImageVisionSinglePass(mimeType, base64Data, source, thresh
  */
 export async function analyzeImage(mimeType, base64Data, source, options = {}) {
   const dispatchWindowEvent = options.dispatchWindowEvent !== false;
-  if (!base64Data || typeof base64Data !== 'string') return null;
+  if (options.isCurrent && !options.isCurrent()) throw new AnalysisUnavailableError('stale_target');
+  if (!base64Data || typeof base64Data !== 'string') throw new AnalysisUnavailableError('empty_image');
 
   const settings = await storage.getSettings();
   const threshold = typeof settings.confidenceThreshold === 'number' ? settings.confidenceThreshold : CONFIDENCE_THRESHOLD;
 
   const dataUrl = `data:${mimeType || 'image/png'};base64,${base64Data}`;
 
+  if (options.isCurrent && !options.isCurrent()) throw new AnalysisUnavailableError('stale_target');
   const ocr = await callGeminiWithImage(buildImageTranscribePrompt(), mimeType, base64Data, {
     generationConfig: {
       ...GEMINI_IMAGE_TRANSCRIBE_GENERATION,
@@ -196,6 +204,7 @@ export async function analyzeImage(mimeType, base64Data, source, options = {}) {
     },
   });
 
+  if (options.isCurrent && !options.isCurrent()) throw new AnalysisUnavailableError('stale_target');
   if (ocr?.networkError) {
     throw new Error(ocr.message || 'Image scan failed');
   }
@@ -215,6 +224,7 @@ export async function analyzeImage(mimeType, base64Data, source, options = {}) {
       forceClassifier: true,
       skipPersist: true,
       fromImageOcr: true,
+      isCurrent: options.isCurrent,
     });
     if (threat) {
       threat.previewImageDataUrl = dataUrl;
@@ -227,7 +237,8 @@ export async function analyzeImage(mimeType, base64Data, source, options = {}) {
         : '[Pipeline: dedicated vision OCR, then text classifier.]';
       if (ocrNote) note += ` [Image quality: ${ocrNote}]`;
       threat.reasoning = note;
-      await persistAndBroadcastThreat(threat, dispatchWindowEvent);
+      if (options.isCurrent && !options.isCurrent()) throw new AnalysisUnavailableError('stale_target');
+      if (!options.skipPersist) await persistAndBroadcastThreat(threat, dispatchWindowEvent);
       return threat;
     }
   }
@@ -239,12 +250,13 @@ export async function analyzeImage(mimeType, base64Data, source, options = {}) {
       source,
       threshold,
       dispatchWindowEvent,
+      options,
     );
     if (fallback) return fallback;
   }
 
   if (!ocr || ocr.parseError) {
-    return analyzeImageVisionSinglePass(mimeType, base64Data, source, threshold, dispatchWindowEvent);
+    return analyzeImageVisionSinglePass(mimeType, base64Data, source, threshold, dispatchWindowEvent, options);
   }
 
   return null;
@@ -261,6 +273,8 @@ export async function analyzeImage(mimeType, base64Data, source, options = {}) {
  */
 export async function analyzeText(text, source, options = {}) {
   if (!text || !String(text).trim()) return null;
+  if (typeof text !== 'string' || text.length > 50000) throw new AnalysisUnavailableError('input_limit');
+  if (options.isCurrent && !options.isCurrent()) throw new AnalysisUnavailableError('stale_target');
 
   const settings = await storage.getSettings();
   const threshold = typeof settings.confidenceThreshold === 'number' ? settings.confidenceThreshold : CONFIDENCE_THRESHOLD;
@@ -292,7 +306,9 @@ export async function analyzeText(text, source, options = {}) {
     const prompt = buildSingleTurnPrompt(text, decodedText !== text ? decodedText : null, {
       fromImageOcr: !!options.fromImageOcr,
     });
+    if (options.isCurrent && !options.isCurrent()) throw new AnalysisUnavailableError('stale_target');
     gemini = await callGemini(prompt, {
+      sourceText: text,
       generationConfig: {
         ...GEMINI_CLASSIFIER_GENERATION,
         ...GEMINI_THINKING_HIGH,
@@ -312,7 +328,11 @@ export async function analyzeText(text, source, options = {}) {
   const confirmed =
     (inj && conf >= threshold) || instruction.suspicionScore >= 0.8;
 
-  if (!confirmed) return null;
+  if (options.isCurrent && !options.isCurrent()) throw new AnalysisUnavailableError('stale_target');
+  if (!confirmed) {
+    if (gemini?.networkError || gemini?.parseError) throw new AnalysisUnavailableError(gemini.code || 'classifier');
+    return null;
+  }
 
   const attackClass = geminiOk ? emptyToNull(gemini.attack_class) : null;
   const technique = geminiOk ? emptyToNull(gemini.technique) : null;
@@ -366,6 +386,33 @@ export async function analyzeTrajectory(turns) {
     return { trajectory_attack_detected: false, confidence: 0 };
   }
   const windowed = turns.slice(-TRAJECTORY_WINDOW);
+  if (windowed.some((turn) => !['user', 'assistant'].includes(turn.role) || typeof turn.content !== 'string') || windowed.reduce((n, turn) => n + turn.content.length, 0) > 50000) return { status: 'unavailable', networkError: true, code: 'input_limit' };
   const prompt = buildTrajectoryPrompt(windowed);
-  return callGemini(prompt);
+  const result = await callGemini(prompt, { trajectoryCount: windowed.length, generationConfig: { responseMimeType: 'application/json', responseJsonSchema: TRAJECTORY_SCHEMA } });
+  if (result.networkError) return result;
+  const offset = turns.length - windowed.length;
+  return {
+    ...result, windowStart: offset + 1,
+    attack_began_at_turn: result.attack_began_at_turn == null ? null : result.attack_began_at_turn + offset,
+    safe_truncation_point: result.safe_truncation_point == null ? null : result.safe_truncation_point + offset,
+    compromised_turns: result.compromised_turns.map((n) => n + offset),
+  };
+}
+
+
+export class AnalysisUnavailableError extends Error {
+  constructor(code) {
+    super(`Analysis unavailable (${code}). No clean verdict was produced.`);
+    this.name = 'AnalysisUnavailableError';
+    this.code = code;
+  }
+}
+/** Structured adapter for callers that need explicit states without exceptions. */
+export async function analyzeTextResult(text, source, options = {}) {
+  try {
+    const threat = await analyzeText(text, source, options);
+    return { status: threat ? 'threat' : 'no_threat_detected', threat };
+  } catch (error) {
+    return { status: 'unavailable', code: error.code || 'analysis_failed', threat: null };
+  }
 }

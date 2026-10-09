@@ -1,6 +1,7 @@
+import { isSensitiveElement } from '../../shared/privacy';
 import { PASTE_MIN_CHARS_EDITABLE } from '../../shared/constants';
 
-const SKIP_INPUT_TYPES = new Set(['button', 'submit', 'checkbox', 'radio', 'file', 'hidden', 'image', 'reset', 'range', 'color']);
+const SKIP_INPUT_TYPES = new Set(['password', 'email', 'tel', 'number', 'button', 'submit', 'checkbox', 'radio', 'file', 'hidden', 'image', 'reset', 'range', 'color']);
 
 function isOurUi(el) {
   return !!el?.closest?.('#sentientcy-host');
@@ -20,7 +21,7 @@ function googleDocsContentRoot(target) {
 
 export function isEditableTarget(el) {
   if (!el || el.nodeType !== 1) return false;
-  if (isOurUi(el)) return false;
+  if (isOurUi(el) || isSensitiveElement(el)) return false;
 
   const role = el.getAttribute?.('role');
   if (role === 'textbox') {
@@ -41,7 +42,7 @@ export function isEditableTarget(el) {
 
   if (el.tagName === 'INPUT') {
     if (el.disabled || el.readOnly) return false;
-    if (isOurUi(el)) return false;
+    if (isOurUi(el) || isSensitiveElement(el)) return false;
     const t = (el.type || 'text').toLowerCase();
     if (SKIP_INPUT_TYPES.has(t)) return false;
     return true;
@@ -65,7 +66,7 @@ export function matchesInputArea(target, selectorString) {
 }
 
 export function resolveInputRoot(target, platformInfo) {
-  if (!target || target.nodeType !== 1) return target;
+  if (!target || target.nodeType !== 1 || isSensitiveElement(target)) return null;
 
   const gdocs = googleDocsContentRoot(target);
   if (gdocs) return gdocs;
@@ -76,7 +77,7 @@ export function resolveInputRoot(target, platformInfo) {
     for (const p of parts) {
       try {
         const hit = target.closest(p);
-        if (hit) return hit;
+        if (hit && isEditableTarget(hit)) return hit;
       } catch {
         /* ignore */
       }

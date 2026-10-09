@@ -1,5 +1,11 @@
-import { storage } from '../shared/storage';
+import { executeGeminiRequest, unavailable } from '../classifier/gemini-client';
+import { storage, createStorageWriter, registerStorageWriter } from '../shared/storage';
 
+const writer = createStorageWriter();
+registerStorageWriter(writer);
+const migration = writer('migrate');
+migration.catch(() => {});
+let requests = 0;
 const tabCounts = new Map();
 
 /** Content script may register its listener right after paint; retry once if the tab is not ready. */
@@ -72,9 +78,7 @@ ensureContextMenu();
 if (chrome.contextMenus?.onClicked) {
   chrome.contextMenus.onClicked.addListener((info, tab) => {
     if (info.menuItemId !== 'sentientcy-scan-selection' || !tab?.id) return;
-    const text = info.selectionText || '';
-    if (text.trim().length < 4) return;
-    sendToTab(tab.id, { type: 'SCAN_SELECTION', text });
+    sendToTab(tab.id, { type: 'SCAN_SELECTION' });
   });
 }
 
@@ -89,6 +93,18 @@ chrome.commands.onCommand.addListener((command) => {
 });
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (sender.id !== chrome.runtime.id) return false;
+  if (msg?.type === 'STORAGE_MUTATE') {
+    writer(msg.operation, msg.payload).then(sendResponse).catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+  if (msg?.type === 'CLASSIFY') {
+    if (requests >= 4 || !Array.isArray(msg.parts)) { sendResponse(unavailable('busy')); return false; }
+    requests++;
+    executeGeminiRequest(msg.parts, msg.options).then(sendResponse)
+      .catch(() => sendResponse(unavailable('worker'))).finally(() => requests--);
+    return true;
+  }
   if (msg?.type === 'GET_TAB_ID') {
     sendResponse({ tabId: sender.tab?.id });
     return true;
@@ -137,6 +153,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
-  storage.clearSession(tabId);
+  storage.clearSession(tabId).catch(() => {});
   tabCounts.delete(tabId);
 });

@@ -1,170 +1,150 @@
 import { REMEDIATION_MODES } from './remediation-modes';
 import { isExtensionContextValid } from './extension-context';
+import { threatMetadata } from './privacy';
 
 export const STORAGE_KEYS = {
-  API_KEY: 'geminiApiKey',
-  REMEDIATION_MODE: 'remediationMode',
-  THREAT_LOG: 'threatLog',
-  SESSION_PREFIX: 'session_',
-  SETTINGS: 'settings',
-  ENGINES: 'engines',
+  API_KEY: 'geminiApiKey', REMEDIATION_MODE: 'remediationMode', THREAT_LOG: 'threatLog',
+  SESSION_PREFIX: 'session_', SETTINGS: 'settings', ENGINES: 'engines',
 };
-
-const KEYS = STORAGE_KEYS;
-
-function normalizeRemediationMode(raw) {
-  const u = String(raw == null ? '' : raw).toUpperCase();
-  return Object.values(REMEDIATION_MODES).includes(u) ? u : REMEDIATION_MODES.SURGICAL;
+const K = STORAGE_KEYS;
+export const DEFAULT_ENGINES = { dom: false, clipboard: false, session: false, copy: false };
+export const DEFAULT_SETTINGS = {
+  remediationMode: REMEDIATION_MODES.SURGICAL, confidenceThreshold: 0.65,
+  remoteAnalysisEnabled: false, engines: DEFAULT_ENGINES,
+};
+function mode(raw) {
+  const value = String(raw || '').toUpperCase();
+  return Object.values(REMEDIATION_MODES).includes(value) ? value : REMEDIATION_MODES.SURGICAL;
 }
-
-const DEFAULT_SETTINGS = {
-  remediationMode: REMEDIATION_MODES.SURGICAL,
-  confidenceThreshold: 0.65,
-  engines: {
-    dom: true,
-    clipboard: true,
-    session: true,
-    copy: true,
-  },
-};
-
-async function getLocal(keys) {
-  return new Promise((resolve) => {
+function engines(value) {
+  return Object.fromEntries(Object.keys(DEFAULT_ENGINES).map((k) => [k, value?.[k] === true]));
+}
+export function normalizeSettings(v = {}) {
+  const raw = v[K.SETTINGS] || {};
+  return {
+    remediationMode: mode(v[K.REMEDIATION_MODE] ?? raw.remediationMode),
+    confidenceThreshold: Number.isFinite(raw.confidenceThreshold) ? Math.min(0.9, Math.max(0.5, raw.confidenceThreshold)) : 0.65,
+    remoteAnalysisEnabled: raw.remoteAnalysisEnabled === true,
+    engines: engines(v[K.ENGINES] ?? raw.engines),
+  };
+}
+export function localOperation(method, arg) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Extension storage timed out')), 5000);
     try {
-      if (!isExtensionContextValid()) {
-        resolve({});
-        return;
-      }
-      chrome.storage.local.get(keys, (result) => {
-        void chrome?.runtime?.lastError;
-        resolve(result ?? {});
+      if (!isExtensionContextValid()) throw new Error('Extension context unavailable');
+      chrome.storage.local[method](arg, (result) => {
+        clearTimeout(timer);
+        const error = chrome.runtime.lastError;
+        if (error) reject(new Error('Extension storage operation failed'));
+        else resolve(result ?? {});
       });
-    } catch {
-      resolve({});
-    }
+    } catch (error) { clearTimeout(timer); reject(error); }
   });
 }
-
-async function setLocal(obj) {
-  return new Promise((resolve) => {
-    try {
-      if (!isExtensionContextValid()) {
-        resolve();
-        return;
-      }
-      chrome.storage.local.set(obj, () => {
-        void chrome?.runtime?.lastError;
-        resolve();
-      });
-    } catch {
-      resolve();
-    }
-  });
+function sessionKey(id) {
+  if (!/^(?:\d+|test-[\w-]+)$/.test(String(id))) throw new Error('Invalid session id');
+  return `${K.SESSION_PREFIX}${id}`;
+}
+function sessionMetadata(turns) {
+  return (Array.isArray(turns) ? turns : []).slice(-20).map((t) => ({
+    role: t.role === 'assistant' ? 'assistant' : 'user',
+    timestamp: Number.isFinite(t.timestamp) ? t.timestamp : Date.now(),
+  }));
 }
 
-export const storage = {
-  async getApiKey() {
-    const v = await getLocal([KEYS.API_KEY]);
-    return v[KEYS.API_KEY] || null;
-  },
-
-  async setApiKey(key) {
-    await setLocal({ [KEYS.API_KEY]: key || '' });
-  },
-
-  async getRemediationMode() {
-    const v = await getLocal([KEYS.REMEDIATION_MODE]);
-    return normalizeRemediationMode(v[KEYS.REMEDIATION_MODE] ?? DEFAULT_SETTINGS.remediationMode);
-  },
-
-  async setRemediationMode(mode) {
-    await setLocal({ [KEYS.REMEDIATION_MODE]: normalizeRemediationMode(mode) });
-  },
-
-  async logThreat(threat) {
-    const v = await getLocal([KEYS.THREAT_LOG]);
-    const log = Array.isArray(v[KEYS.THREAT_LOG]) ? v[KEYS.THREAT_LOG] : [];
-    log.unshift(threat);
-    await setLocal({ [KEYS.THREAT_LOG]: log.slice(0, 100) });
-  },
-
-  async getThreats() {
-    const v = await getLocal([KEYS.THREAT_LOG]);
-    return Array.isArray(v[KEYS.THREAT_LOG]) ? v[KEYS.THREAT_LOG] : [];
-  },
-
-  async clearThreats() {
-    await setLocal({ [KEYS.THREAT_LOG]: [] });
-  },
-
-  sessionKey(tabId) {
-    return `${KEYS.SESSION_PREFIX}${tabId}`;
-  },
-
-  async getSessionHistory(tabId) {
-    const k = this.sessionKey(tabId);
-    const v = await getLocal([k]);
-    const arr = v[k];
-    return Array.isArray(arr) ? arr : [];
-  },
-
-  async appendSessionTurn(tabId, turn) {
-    const k = this.sessionKey(tabId);
-    const v = await getLocal([k]);
-    const arr = Array.isArray(v[k]) ? v[k] : [];
-    arr.push(turn);
-    await setLocal({ [k]: arr.slice(-20) });
-  },
-
-  async setSessionHistory(tabId, turns) {
-    const k = this.sessionKey(tabId);
-    const clean = (turns || []).map((t) => ({
-      role: t.role,
-      content: t.content,
-      timestamp: t.timestamp || Date.now(),
-    }));
-    await setLocal({ [k]: clean.slice(-20) });
-  },
-
-  async clearSession(tabId) {
-    const k = this.sessionKey(tabId);
-    await new Promise((resolve) => {
-      try {
-        if (!isExtensionContextValid()) {
-          resolve();
-          return;
+/** Only the service worker owns this queue. Acknowledgment follows durable completion. */
+export function createStorageWriter(io = localOperation) {
+  let tail = Promise.resolve();
+  return (operation, payload = {}) => {
+    const task = tail.then(async () => {
+      if (operation === 'migrate') {
+        const all = await io('get', null);
+        const clean = { [K.THREAT_LOG]: (Array.isArray(all[K.THREAT_LOG]) ? all[K.THREAT_LOG] : []).slice(0, 100).map(threatMetadata) };
+        for (const key of Object.keys(all)) {
+          if (key.startsWith(K.SESSION_PREFIX)) clean[key] = sessionMetadata(all[key]);
         }
-        chrome.storage.local.remove(k, () => {
-          void chrome?.runtime?.lastError;
-          resolve();
-        });
-      } catch {
-        resolve();
-      }
+        await io('set', clean);
+      } else if (operation === 'logThreat') {
+        const v = await io('get', [K.THREAT_LOG]);
+        const next = threatMetadata(payload.threat);
+        const old = Array.isArray(v[K.THREAT_LOG]) ? v[K.THREAT_LOG] : [];
+        await io('set', { [K.THREAT_LOG]: [next, ...old.filter((t) => t.id !== next.id).map(threatMetadata)].slice(0, 100) });
+      } else if (operation === 'clearThreats') {
+        await io('set', { [K.THREAT_LOG]: [] });
+      } else if (operation === 'setSettings') {
+        const v = await io('get', [K.SETTINGS, K.REMEDIATION_MODE, K.ENGINES]);
+        const current = normalizeSettings(v);
+        const patch = payload.settings || {};
+        const next = normalizeSettings({ settings: { ...current, ...patch, engines: { ...current.engines, ...patch.engines } } });
+        await io('set', { [K.SETTINGS]: next, [K.REMEDIATION_MODE]: next.remediationMode, [K.ENGINES]: next.engines });
+      } else if (operation === 'setApiKey') {
+        await io('set', { [K.API_KEY]: typeof payload.key === 'string' ? payload.key.slice(0, 512) : '' });
+      } else if (operation === 'appendSessionTurn' || operation === 'setSessionHistory') {
+        const key = sessionKey(payload.tabId);
+        const old = operation === 'appendSessionTurn' ? (await io('get', [key]))[key] || [] : [];
+        await io('set', { [key]: sessionMetadata(operation === 'appendSessionTurn' ? [...old, payload.turn] : payload.turns) });
+      } else if (operation === 'clearSession') {
+        await io('remove', sessionKey(payload.tabId));
+      } else if (operation === 'clearAll') {
+        await io('clear', undefined);
+      } else throw new Error('Unsupported storage operation');
+      return { ok: true };
     });
+    tail = task.catch(() => {});
+    return task;
+  };
+}
+let workerWriter;
+export function registerStorageWriter(writer) { workerWriter = writer; }
+function mutate(operation, payload = {}) {
+  if (workerWriter) return workerWriter(operation, payload);
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Storage worker unavailable')), 10000);
+    try {
+      chrome.runtime.sendMessage({ type: 'STORAGE_MUTATE', operation, payload }, (response) => {
+        clearTimeout(timer);
+        if (chrome.runtime.lastError || !response?.ok) reject(new Error('Storage write failed'));
+        else resolve();
+      });
+    } catch { clearTimeout(timer); reject(new Error('Storage worker unavailable')); }
+  });
+}
+export const storage = {
+  getApiKey: async () => (await localOperation('get', [K.API_KEY]))[K.API_KEY] || null,
+  setApiKey: (key) => mutate('setApiKey', { key }),
+  getSettings: async () => normalizeSettings(await localOperation('get', [K.SETTINGS, K.REMEDIATION_MODE, K.ENGINES])),
+  setSettings: (settings) => mutate('setSettings', { settings }),
+  getEngines: async () => (await storage.getSettings()).engines,
+  getRemediationMode: async () => (await storage.getSettings()).remediationMode,
+  setRemediationMode: (remediationMode) => storage.setSettings({ remediationMode }),
+  logThreat: (threat) => mutate('logThreat', { threat: threatMetadata(threat) }),
+  getThreats: async () => {
+    const data = (await localOperation('get', [K.THREAT_LOG]))[K.THREAT_LOG];
+    return (Array.isArray(data) ? data : []).map(threatMetadata);
   },
-
-  async getSettings() {
-    const v = await getLocal([KEYS.SETTINGS, KEYS.REMEDIATION_MODE, KEYS.ENGINES]);
-    const base = { ...DEFAULT_SETTINGS, ...(v[KEYS.SETTINGS] || {}) };
-    base.remediationMode = normalizeRemediationMode(v[KEYS.REMEDIATION_MODE] ?? base.remediationMode);
-    if (v[KEYS.ENGINES]) base.engines = { ...DEFAULT_SETTINGS.engines, ...v[KEYS.ENGINES] };
-    return base;
-  },
-
-  async setSettings(settings) {
-    const cur = await this.getSettings();
-    const next = { ...cur, ...settings };
-    next.remediationMode = normalizeRemediationMode(next.remediationMode);
-    await setLocal({
-      [KEYS.SETTINGS]: next,
-      [KEYS.REMEDIATION_MODE]: next.remediationMode,
-      [KEYS.ENGINES]: next.engines,
-    });
-  },
-
-  async getEngines() {
-    const s = await this.getSettings();
-    return s.engines;
-  },
+  clearThreats: () => mutate('clearThreats'),
+  sessionKey,
+  getSessionHistory: async (tabId) => sessionMetadata((await localOperation('get', [sessionKey(tabId)]))[sessionKey(tabId)]),
+  appendSessionTurn: (tabId, turn) => mutate('appendSessionTurn', { tabId, turn: sessionMetadata([turn])[0] }),
+  setSessionHistory: (tabId, turns) => mutate('setSessionHistory', { tabId, turns: sessionMetadata(turns) }),
+  clearSession: (tabId) => mutate('clearSession', { tabId }),
+  clearAll: () => mutate('clearAll'),
 };
+
+/** Fail-open for native editing until settings hydrate; never capture while disabled. */
+export function watchEngines(onChange) {
+  let stopped = false;
+  let revision = 0;
+  const refresh = async () => {
+    const current = ++revision;
+    try {
+      const value = await storage.getEngines();
+      if (!stopped && current === revision) onChange(value);
+    } catch { if (!stopped && current === revision) onChange({ ...DEFAULT_ENGINES }); }
+  };
+  const listener = (_changes, area) => { if (area === 'local') void refresh(); };
+  chrome.storage.onChanged.addListener(listener);
+  void refresh();
+  return () => { stopped = true; chrome.storage.onChanged.removeListener(listener); };
+}

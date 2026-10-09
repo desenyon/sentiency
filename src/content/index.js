@@ -1,3 +1,6 @@
+import { selectionIsSensitive } from '../shared/privacy';
+import { showPasteNotice } from './remediation/clipboard-remediator';
+import { contentEvents } from './events';
 import './ui/panel.css';
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -25,64 +28,24 @@ function attachEarlyMessageBridge() {
   try {
     chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       if (msg?.type === 'SHOW_THREAT' && msg.threat) {
-        window.dispatchEvent(new CustomEvent('sentientcy-threat-detected', { detail: msg.threat }));
+        contentEvents.dispatchEvent(new CustomEvent('sentientcy-threat-detected', { detail: msg.threat }));
       }
-      if (msg?.type === 'SCAN_SELECTION' && typeof msg.text === 'string') {
-        (async () => {
-          window.dispatchEvent(new CustomEvent('sentientcy-scan-busy', { detail: { phase: 'scan' } }));
-          try {
-            const t = await analyzeText(msg.text, ENGINE.SCAN, { forceClassifier: true });
-            if (t) {
-              window.dispatchEvent(new CustomEvent('sentientcy-threat-detected', { detail: t }));
-              window.dispatchEvent(new CustomEvent('sentientcy-clipboard-risk', { detail: { threat: t, phase: 'scan' } }));
-            }
-            if (isExtensionContextValid()) {
-              try {
-                sendResponse?.({ ok: true, threat: !!t });
-              } catch {
-                /* invalidated before response */
-              }
-            }
-          } finally {
-            window.dispatchEvent(new CustomEvent('sentientcy-scan-idle'));
-          }
-        })();
-        return true;
-      }
-      if (msg?.type === 'SCAN_KEYBOARD') {
-        let text = '';
-        try {
-          text = window.getSelection()?.toString() || '';
-        } catch {
-          text = '';
-        }
-        if (text.trim().length < 4) {
-          try {
-            if (isExtensionContextValid()) sendResponse?.({ ok: false, reason: 'empty' });
-          } catch {
-            /* ignore */
-          }
-          return true;
-        }
-        (async () => {
-          window.dispatchEvent(new CustomEvent('sentientcy-scan-busy', { detail: { phase: 'scan' } }));
-          try {
-            const t = await analyzeText(text, ENGINE.SCAN, { forceClassifier: true });
-            if (t) {
-              window.dispatchEvent(new CustomEvent('sentientcy-threat-detected', { detail: t }));
-              window.dispatchEvent(new CustomEvent('sentientcy-clipboard-risk', { detail: { threat: t, phase: 'scan' } }));
-            }
-            if (isExtensionContextValid()) {
-              try {
-                sendResponse?.({ ok: true, threat: !!t });
-              } catch {
-                /* invalidated before response */
-              }
-            }
-          } finally {
-            window.dispatchEvent(new CustomEvent('sentientcy-scan-idle'));
-          }
-        })();
+      if (msg?.type === 'SCAN_SELECTION' || msg?.type === 'SCAN_KEYBOARD') {
+        if (selectionIsSensitive()) { sendResponse({ ok: false, reason: 'excluded' }); return false; }
+        const text = window.getSelection()?.toString() || '';
+        if (text.trim().length < 4) { sendResponse({ ok: false, reason: 'empty' }); return false; }
+        contentEvents.dispatchEvent(new CustomEvent('sentientcy-scan-busy', { detail: { phase: 'scan' } }));
+        void analyzeText(text, ENGINE.SCAN, { forceClassifier: true, isCurrent: () => !selectionIsSensitive() })
+          .then((threat) => {
+            if (threat) contentEvents.dispatchEvent(new CustomEvent('sentientcy-clipboard-risk', { detail: { threat, phase: 'scan' } }));
+            else showPasteNotice(document.body, 'No threat detected in this selection. This is not a safety guarantee.');
+            sendResponse({ ok: true, threat: !!threat });
+          })
+          .catch(() => {
+            showPasteNotice(document.body, 'Selection analysis unavailable. No clean verdict was produced.');
+            sendResponse({ ok: false, reason: 'unavailable' });
+          })
+          .finally(() => contentEvents.dispatchEvent(new CustomEvent('sentientcy-scan-idle')));
         return true;
       }
       if (msg?.type === 'SENTIENTCY_PING') {
@@ -105,6 +68,7 @@ function App({ platformInfo }) {
   const [busyPhase, setBusyPhase] = useState(null);
   const [storageRev, setStorageRev] = useState(0);
   const domPanelTimer = useRef(null);
+  const busyCount = useRef(0);
 
   useEffect(() => {
     const onStorage = (changes, area) => {
@@ -147,18 +111,21 @@ function App({ platformInfo }) {
       setRisk(e.detail?.threat || null);
       setRiskPhase(e.detail?.phase || 'paste');
     };
-    const onBusy = (e) => setBusyPhase(e.detail?.phase || 'paste');
-    const onIdle = () => setBusyPhase(null);
-    window.addEventListener('sentientcy-threat-detected', onThreat);
-    window.addEventListener('sentientcy-clipboard-risk', onRisk);
-    window.addEventListener('sentientcy-scan-busy', onBusy);
-    window.addEventListener('sentientcy-scan-idle', onIdle);
+    const onBusy = (e) => { busyCount.current++; setBusyPhase(e.detail?.phase || 'paste'); };
+    const onIdle = () => { busyCount.current = Math.max(0, busyCount.current - 1); if (!busyCount.current) setBusyPhase(null); };
+    const onUnavailable = () => showPasteNotice(document.body, 'Analysis unavailable. No clean verdict was produced.');
+    contentEvents.addEventListener('sentientcy-analysis-unavailable', onUnavailable);
+    contentEvents.addEventListener('sentientcy-threat-detected', onThreat);
+    contentEvents.addEventListener('sentientcy-clipboard-risk', onRisk);
+    contentEvents.addEventListener('sentientcy-scan-busy', onBusy);
+    contentEvents.addEventListener('sentientcy-scan-idle', onIdle);
     return () => {
       clearTimeout(domPanelTimer.current);
-      window.removeEventListener('sentientcy-threat-detected', onThreat);
-      window.removeEventListener('sentientcy-clipboard-risk', onRisk);
-      window.removeEventListener('sentientcy-scan-busy', onBusy);
-      window.removeEventListener('sentientcy-scan-idle', onIdle);
+      contentEvents.removeEventListener('sentientcy-analysis-unavailable', onUnavailable);
+      contentEvents.removeEventListener('sentientcy-threat-detected', onThreat);
+      contentEvents.removeEventListener('sentientcy-clipboard-risk', onRisk);
+      contentEvents.removeEventListener('sentientcy-scan-busy', onBusy);
+      contentEvents.removeEventListener('sentientcy-scan-idle', onIdle);
     };
   }, []);
 
@@ -184,15 +151,15 @@ function App({ platformInfo }) {
   const root = createRoot(mount);
   root.render(<App platformInfo={platformInfo} />);
 
-  initDOMScanner();
-  initClipboardInterceptor(platformInfo);
-  initCopyInterceptor();
+  const stopDOM = initDOMScanner();
+  const stopClipboard = initClipboardInterceptor(platformInfo);
+  const stopCopy = initCopyInterceptor();
   let stopSession = null;
   if (platformInfo.isLLMPlatform) {
     stopSession = initSessionMonitor(platformInfo);
   }
 
   window.addEventListener('beforeunload', () => {
-    stopSession?.();
+    stopSession?.(); stopDOM(); stopClipboard(); stopCopy();
   });
 })();

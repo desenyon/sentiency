@@ -29,7 +29,7 @@ export const SELECTORS = {
     submitButton: 'button[data-testid="send-button"]',
   },
   'gemini.google.com': {
-    messageContainer: 'div.conversation-container, main',
+    messageContainer: '.user-query-bubble, model-response, div[data-role="user"], div[data-role="model"]',
     userMessage: 'div[data-role="user"], .user-query-bubble',
     assistantMessage: 'div[data-role="model"], message-content, model-response',
     toolResult: 'tool-output, .tool-result',

@@ -7,3 +7,7 @@ oldlogo.png
 .DS_Store
 *.crx
 *.pem
+
+playwright-report/
+test-results/
+coverage/

@@ -23,6 +23,7 @@ export function ThreatPanel({ threat, onDismiss, storageRev = 0 }) {
 
   useEffect(() => {
     setPreviewTab('original');
+    setOpen(true);
   }, [threat?.id]);
 
   useEffect(() => {
@@ -47,7 +48,7 @@ export function ThreatPanel({ threat, onDismiss, storageRev = 0 }) {
       const ctx = getLastPasteContext();
       if (ctx?.threat?.id === threat.id && ctx.inputRoot?.isConnected) {
         try {
-          await remediateClipboard(ctx.pastedText, ctx.threat, ctx.inputRoot, mode);
+          await remediateClipboard(ctx.pastedText, ctx.threat, ctx.inputRoot, mode, ctx.transaction);
         } catch {
           /* ignore */
         }
@@ -78,7 +79,7 @@ export function ThreatPanel({ threat, onDismiss, storageRev = 0 }) {
               <p className="sentientcy-text-faint text-[10px] font-bold uppercase tracking-[0.16em]">Sentiency</p>
               <p className="sentientcy-text-title text-[15px] leading-tight">Threat detected</p>
               <p className="sentientcy-text-muted mt-1 text-[10px] tabular-nums" aria-live="polite">
-                {spanCount} segment{spanCount === 1 ? '' : 's'} flagged · synced
+                {spanCount} segment{spanCount === 1 ? '' : 's'} flagged · {threat.persistenceError ? 'not saved' : 'metadata saved'}
               </p>
             </div>
           </div>
@@ -188,7 +189,7 @@ export function ThreatPanel({ threat, onDismiss, storageRev = 0 }) {
         <div className="sentientcy-section">
           <p className="sentientcy-section-title">Remediation</p>
           <p className="sentientcy-text-muted mb-2 text-[11px] leading-relaxed">
-            Apply a mode to this clipboard event when the field is still focused.
+            Replace this paste while the field is unchanged. Later edits make the action unavailable.
           </p>
           <div className="sentientcy-btn-group grid grid-cols-3 gap-2">
             <button type="button" className="sentientcy-btn-ghost sentientcy-btn-compact" onClick={() => void applyFromPanel(REMEDIATION_MODES.SURGICAL)}>

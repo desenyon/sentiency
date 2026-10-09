@@ -1,17 +1,7 @@
 import { GEMINI_API_URL } from '../shared/constants';
 import { storage } from '../shared/storage';
-
-function sleep(ms) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
-function stripCodeFences(s) {
-  let t = s.trim();
-  if (t.startsWith('```')) {
-    t = t.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
-  }
-  return t.trim();
-}
+import { CLASSIFIER_RESPONSE_JSON_SCHEMA } from './gemini-schemas';
+import { validateClassifier, validateTrajectory } from './validate-response';
 
 const DEFAULT_GENERATION = {
   temperature: 0.1,
@@ -50,151 +40,78 @@ export const GEMINI_CLASSIFIER_GENERATION = {
 /** Default: prefer maximum detail for small security crops (API may fall back on unsupported models). */
 export const GEMINI_VISION_MEDIA_LEVEL_ULTRA = 'MEDIA_RESOLUTION_ULTRA_HIGH';
 
-function shallowCloneParts(parts) {
-  return (parts || []).map((p) => {
-    if (!p || typeof p !== 'object') return p;
-    const next = { ...p };
-    if (p.inlineData) next.inlineData = { ...p.inlineData };
-    return next;
-  });
+export const REQUEST_DEADLINE_MS = 12000;
+export function unavailable(code) {
+  return { status: 'unavailable', code, networkError: true, message: `Analysis unavailable (${code}). No clean verdict was produced.` };
 }
 
-function stripMediaResolutionFromParts(parts) {
-  return parts.map((p) => {
-    if (!p?.inlineData || p.mediaResolution == null) return p;
-    const { mediaResolution: _m, ...rest } = p;
-    return rest;
-  });
-}
-
-function partsHaveMediaResolution(parts) {
-  return parts.some((p) => p?.inlineData && p.mediaResolution != null);
-}
-
-/**
- * Final answer text only (Gemini 3 may emit separate "thought" parts).
- * @param {unknown[]} parts
- */
-function partsToAnswerText(parts) {
-  if (!Array.isArray(parts)) return '';
-  return parts
-    .filter((p) => p && p.thought !== true && typeof p.text === 'string')
-    .map((p) => p.text)
-    .join('');
-}
-
-/**
- * @param {unknown[]} parts
- * @param {Record<string, unknown> | null} genOverrides
- * @param {Record<string, unknown> | null} requestExtras e.g. { systemInstruction: { parts: [{ text }] } }
- */
-async function postGeminiContents(parts, genOverrides = null, requestExtras = null) {
-  const key = await storage.getApiKey();
-  if (!key) {
-    return { networkError: true, message: 'No API key configured' };
-  }
-
-  const url = `${GEMINI_API_URL}?key=${encodeURIComponent(key)}`;
-  let lastErr;
-
-  for (let attempt = 0; attempt < 3; attempt++) {
-    let tryGen = { ...DEFAULT_GENERATION, ...(genOverrides || {}) };
-    let tryParts = shallowCloneParts(parts);
-
-    for (let relax = 0; relax < 8; relax++) {
-      const body = {
-        contents: [{ parts: tryParts }],
-        generationConfig: tryGen,
-        ...(requestExtras && typeof requestExtras === 'object' ? requestExtras : {}),
-      };
-
-      try {
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        });
-        const json = await res.json().catch(() => ({}));
-
-        if (!res.ok) {
-          lastErr = json?.error?.message || res.statusText;
-          if (res.status === 400) {
-            if (tryGen.responseJsonSchema != null || tryGen.responseMimeType != null) {
-              tryGen = { ...tryGen };
-              delete tryGen.responseJsonSchema;
-              delete tryGen.responseMimeType;
-              continue;
-            }
-            if (tryGen.thinkingConfig != null) {
-              tryGen = { ...tryGen };
-              delete tryGen.thinkingConfig;
-              continue;
-            }
-            if (partsHaveMediaResolution(tryParts)) {
-              tryParts = stripMediaResolutionFromParts(tryParts);
-              continue;
-            }
-          }
-          break;
-        }
-
-        const rawText = partsToAnswerText(json?.candidates?.[0]?.content?.parts) || '';
-        const cleaned = stripCodeFences(rawText);
-        try {
-          return JSON.parse(cleaned);
-        } catch {
-          return { parseError: true, raw: cleaned };
-        }
-      } catch (e) {
-        lastErr = e.message;
-        break;
+/** Worker-only transport. No raw provider errors or unvalidated response text escape. */
+export async function executeGeminiRequest(parts, options = {}) {
+  const controller = new AbortController();
+  let timer;
+  const operation = async () => {
+    const settings = await storage.getSettings();
+    if (!settings.remoteAnalysisEnabled) return unavailable('remote_disabled');
+    const key = await storage.getApiKey();
+    if (!key) return unavailable('missing_key');
+    if (JSON.stringify(parts).length > 6000000) return unavailable('input_limit');
+    const schema = options.generationConfig?.responseJsonSchema || CLASSIFIER_RESPONSE_JSON_SCHEMA;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (controller.signal.aborted) return unavailable('timeout');
+      const response = await fetch(GEMINI_API_URL, {
+        method: 'POST', signal: controller.signal,
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+        body: JSON.stringify({
+          contents: [{ parts }],
+          generationConfig: { ...DEFAULT_GENERATION, ...options.generationConfig },
+          ...(options.requestExtras?.systemInstruction ? { systemInstruction: options.requestExtras.systemInstruction } : {}),
+        }),
+      });
+      if (!response.ok) {
+        if (attempt === 0 && (response.status === 429 || response.status >= 500)) continue;
+        return unavailable(`http_${response.status}`);
       }
+      const envelope = await response.json();
+      const candidate = envelope?.candidates?.[0];
+      if (candidate?.finishReason !== 'STOP') return unavailable('incomplete_response');
+      const raw = (candidate?.content?.parts || []).filter((part) => !part.thought && typeof part.text === 'string').map((part) => part.text).join('');
+      if (raw.length > 150000) return unavailable('response_limit');
+      let parsed;
+      try { parsed = JSON.parse(raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')); }
+      catch { return unavailable('invalid_json'); }
+      const valid = options.trajectoryCount
+        ? validateTrajectory(parsed, options.trajectoryCount)
+        : validateClassifier(parsed, schema, options.sourceText);
+      if (!valid) return unavailable('invalid_schema');
+      const keys = options.trajectoryCount ? ['trajectory_attack_detected', 'confidence', 'attack_type', 'attack_began_at_turn', 'compromised_turns', 'description', 'safe_truncation_point'] : Object.keys(schema.properties);
+      return { ...Object.fromEntries(keys.filter((key) => key in parsed).map((key) => [key, parsed[key]])), status: 'complete' };
     }
-
-    await sleep(1000 * 2 ** attempt);
-  }
-
-  return { networkError: true, message: lastErr || 'Gemini request failed' };
-}
-
-/**
- * @param {string} promptText
- * @param {{
- *   generationConfig?: Record<string, unknown>,
- *   requestExtras?: Record<string, unknown>,
- * }} [options]
- */
-export async function callGemini(promptText, options = {}) {
-  return postGeminiContents([{ text: promptText }], options.generationConfig ?? null, options.requestExtras ?? null);
-}
-
-/**
- * Multimodal: one inline image + instruction text.
- * Image is sent first by default (stronger visual grounding for OCR-style tasks).
- * @param {{
- *   generationConfig?: Record<string, unknown>,
- *   requestExtras?: Record<string, unknown>,
- *   imageFirst?: boolean,
- *   mediaLevel?: string,
- * }} [options]
- */
-export async function callGeminiWithImage(promptText, mimeType, base64Data, options = {}) {
-  const mime = mimeType || 'image/png';
-  const imageFirst = options.imageFirst !== false;
-  const level = options.mediaLevel ?? GEMINI_VISION_MEDIA_LEVEL_ULTRA;
-
-  const imagePart = {
-    inlineData: {
-      mimeType: mime,
-      data: base64Data,
-    },
-    mediaResolution: {
-      level,
-    },
+    return unavailable('network');
   };
+  const deadline = new Promise((resolve) => {
+    timer = setTimeout(() => { controller.abort(); resolve(unavailable('timeout')); }, REQUEST_DEADLINE_MS);
+  });
+  try { return await Promise.race([operation().catch(() => unavailable(controller.signal.aborted ? 'timeout' : 'network')), deadline]); }
+  finally { clearTimeout(timer); }
+}
 
-  const textPart = { text: promptText };
-  const ordered = imageFirst ? [imagePart, textPart] : [textPart, imagePart];
-
-  return postGeminiContents(ordered, options.generationConfig ?? null, options.requestExtras ?? null);
+function request(parts, options) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(unavailable('worker_timeout')), REQUEST_DEADLINE_MS + 2000);
+    try {
+      chrome.runtime.sendMessage({ type: 'CLASSIFY', parts, options }, (result) => {
+        clearTimeout(timer);
+        resolve(chrome.runtime.lastError || !result ? unavailable('worker') : result);
+      });
+    } catch { clearTimeout(timer); resolve(unavailable('worker')); }
+  });
+}
+export function callGemini(promptText, options = {}) {
+  return request([{ text: promptText }], options);
+}
+export function callGeminiWithImage(promptText, mimeType, base64Data, options = {}) {
+  if (!['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(mimeType) || base64Data.length > 5592408) {
+    return Promise.resolve(unavailable('image_limit_or_type'));
+  }
+  return request([{ inlineData: { mimeType, data: base64Data } }, { text: promptText }], options);
 }

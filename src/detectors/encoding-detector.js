@@ -118,10 +118,10 @@ export function detectEncodings(text) {
     findings.push({ type: 'pig_latin_cluster', count: pigLatinish, decoded: null, index: 0 });
   }
 
-  const morseLike = text.match(/(?:[.\-]{1,5}(?:\s+[.\-]{1,5}){3,})/g);
+  const morseLike = text.match(/(?:[.-]{1,5}(?:\s+[.-]{1,5}){3,})/g);
   if (morseLike) {
     morseLike.forEach((chunk, i) => {
-      if (/[.\-]/.test(chunk) && chunk.length > 8) {
+      if (/[.-]/.test(chunk) && chunk.length > 8) {
         const decoded = decodeMorseChunk(chunk);
         if (decoded.length >= 3) {
           findings.push({

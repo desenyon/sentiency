@@ -161,6 +161,10 @@ tests/browser/              built MV3 extension regressions with mocked Gemini
 
 The manifest currently requests `activeTab`, `scripting`, `storage`, `clipboardRead`, `clipboardWrite`, `sidePanel`, `tabs`, `alarms`, and `contextMenus`, plus broad host access for content scripts and Gemini. Some permissions are historical and broader than the current code needs; this upgrade does not change the manifest permissions. Content scripts run at `document_idle` in top-level frames only (`all_frames: false`). No analytics/telemetry sender is implemented.
 
+## Dependency advisory status
+
+The authorized audit on 2026-10-09 found 17 affected-package entries. Compatible updates reduced this to **12 development-tool entries (10 high, 2 moderate)**; a separate production-tree audit reported **zero findings**. Remaining fixes require separate tool compatibility/migration work; no forced breaking upgrades were applied. See the [dependency audit record](docs/dependency-audit.md) for affected paths and limits. These counts are a dated registry result, not a guarantee of security.
+
 ## Test and verify
 
 ```sh

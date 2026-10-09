@@ -22,7 +22,7 @@ export function RiskModal({ threat, phase, onDismiss, onOpenSide }) {
       const ctx = getLastPasteContext();
       if (ctx?.threat?.id === threat.id && ctx.inputRoot?.isConnected) {
         try {
-          await remediateClipboard(ctx.pastedText, ctx.threat, ctx.inputRoot, mode);
+          await remediateClipboard(ctx.pastedText, ctx.threat, ctx.inputRoot, mode, ctx.transaction);
         } catch {
           /* ignore */
         }

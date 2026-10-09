@@ -1,334 +1,195 @@
 # Sentiency
 
-**Sentiency** is a **Chrome Manifest V3** browser extension that detects, classifies, and remediates **prompt injection** and related adversarial content in real time. It runs **entirely in the browser**: there is **no backend server**. Classification uses the **Google Gemini** REST API (`generateContent`) with an API key the user stores in `chrome.storage.local`.
+<p align="center"><img src="public/icons/logo.png" alt="Sentiency" width="96"></p>
 
-This document is written for **human developers** and as **handoff context for other coding agents**.
+Sentiency is an experimental Chrome Manifest V3 extension for detecting potential prompt injection in browser text and images. It combines local heuristics with optional Google Gemini classification, offers paste remediation, and shows a local activity log. It is a review aid, **not a guarantee that content or a conversation is safe**.
 
----
+**Privacy defaults:** automatic engines start off, and remote analysis requires a separate opt-in. Saving an API key does not enable remote transmission. Credential fields and recognized authentication forms are excluded before capture. Content in ordinary fields can still contain secrets; Sentiency is not a general secret-redaction tool.
 
-## High-level behavior
+## Install and build
 
-1. **DOM engine** — Watches the page with `MutationObserver`, focuses on **visually hidden** text (CSS concealment) and **hidden `<img>`** elements with substantive `alt` or `title`, runs the threat pipeline, and remediates confirmed injections **on the page by highlighting** (not by stripping text in place). Injected spans become `<mark data-sentientcy-injection="1">` with injected document styles; images get a visible outline and tooltip; elements that mix text with inline media use a safe path (single text-node fragment or container outline). **Surgical** stripping applies to **paste/clipboard** flows, not to live DOM text. **BLOCK** mode can still replace or clear blocked DOM content.
-2. **Clipboard engine** — Intercepts **paste** (and handles **image** pastes) on analyzable targets, runs analysis before content reaches the field, then sanitizes, blocks, or inserts content per settings.
-3. **Copy engine** — On **copy**, scans selected text if it exceeds a minimum length.
-4. **Session engine** (LLM sites only) — Observes assistant message streaming/stability, runs **single-turn** analysis on stable assistant text and **trajectory** analysis over a sliding window of conversation turns; can trigger session remediation UI.
-5. **Manual scan** — **Context menu** (“Scan selection with Sentiency”) and **keyboard command** send messages to the active tab’s content script, which runs `analyzeText` on the selection.
-6. **Image scan** — **Clipboard image paste** (editable targets) and **sidebar file upload** call `analyzeImage` (Gemini **multimodal** with `inlineData`).
+Requirements: Node.js **22.14 or newer**, npm, and a Chromium browser supporting Manifest V3 and the Chrome side panel API. The lockfile is committed; use `npm ci` for repeatable dependencies.
 
-All engines feed a shared **threat pipeline** that merges **local heuristics** + **Gemini JSON output**, maps to an internal **taxonomy**, scores **severity**, persists threats, and notifies the UI / service worker.
-
----
-
-## Technology stack
-
-| Layer | Technology |
-|--------|------------|
-| Extension platform | Chrome **Manifest V3** (service worker, content scripts, side panel, options page) |
-| UI | **React 18**, **react-dom**; content-script UI mounted in **Shadow DOM** (`src/content/ui/shadow-host.js`) with extracted CSS (`content.css`) to avoid page style bleed |
-| Styling | **Tailwind CSS 3** (via PostCSS) for options and side panel; separate **panel.css** for shadow UI |
-| Bundling | **Webpack 5** + **Babel** (`@babel/preset-env`, `@babel/preset-react`) |
-| Build artifacts | Output in **`dist/`** — load **unpacked** from `dist/` in `chrome://extensions` |
-| Branding | **`public/icons/`** — `logo.png` plus `icon16.png` / `icon48.png` / `icon128.png` (copied into `dist/`); side panel **`LogoMark`** loads `icons/logo.png`. Source artwork may live at repo root as `Sentiency Logo.png`. |
-| LLM API | **fetch** to `https://generativelanguage.googleapis.com/v1beta/models/<MODEL>:generateContent` |
-| Model | **`gemini-3.1-flash-lite-preview`** by default (`GEMINI_MODEL` in `src/shared/constants.js`); comment in that file notes stronger alternatives (e.g. `gemini-3-flash-preview`) |
-| Storage | **`chrome.storage.local`** (API key, settings, per-tab session history, threat log) |
-| PDF / OCR (npm only) | **`pdfjs-dist`**, **`tesseract.js`** are listed in `package.json` but **are not imported anywhere under `src/`** in the current tree — treat as **unused / planned** unless wired in later |
-
----
-
-## Algorithms and detection logic (concise)
-
-### Local detectors (no network)
-
-These run in parallel where applicable (`Promise.all` in `analyzeText` / post-processing for `analyzeImage` on extracted text):
-
-| Module | Role |
-|--------|------|
-| `visibility-analyzer.js` | Flags “hidden” elements: `display:none`, `visibility:hidden`, opacity 0, tiny font, fg/bg color match, clip/clip-path, offscreen positioning, huge negative `text-indent`, zero-size box with text, etc. DOM scanner only analyzes elements that appear **hidden**. |
-| `unicode-detector.js` | Zero-width / homoglyph-style anomalies (uses `ZERO_WIDTH_CHARS`, `HOMOGLYPH_MAP` from constants). |
-| `instruction-pattern.js` | Substring scan over `INSTRUCTION_KEYWORDS` + imperative regex; produces a **suspicion score** in `[0,1]`. |
-| `encoding-detector.js` | Heuristics for base64-like blobs, char-array obfuscation, Morse-like patterns, etc. |
-| `obfuscation-unwrapper.js` | Uses encoding findings to produce a **decoded** string when applicable. |
-| `injection-block-spans.js` / `removal-spans.js` / `span-utils.js` | Merge, clamp, and augment **character spans** for remediation highlighting and removal. |
-
-### Gemini classification
-
-- **Endpoint**: `GEMINI_API_URL` in `src/shared/constants.js` (same model as above).
-- **Client**: `src/classifier/gemini-client.js`
-  - `postGeminiContents(parts)` — builds `{ contents: [{ parts }], generationConfig }` with `temperature: 0.1`, `topP: 0.95`, `maxOutputTokens: 2048`.
-  - Retries up to **3** attempts with exponential backoff on failure.
-  - Parses **first candidate** text parts, strips optional markdown code fences, **`JSON.parse`**.
-  - **Text**: `callGemini(prompt)` → single text part.
-  - **Image**: `callGeminiWithImage(prompt, mimeType, base64Data)` → text part + part `{ inlineData: { mimeType, data } }` (camelCase for REST JSON).
-
-### Structured JSON (`src/classifier/gemini-schemas.js`)
-
-- Exports **`CLASSIFIER_RESPONSE_JSON_SCHEMA`**, **`IMAGE_COMBINED_RESPONSE_JSON_SCHEMA`**, **`IMAGE_OCR_RESPONSE_JSON_SCHEMA`**, plus matching **`…_SYSTEM_INSTRUCTION`** strings where used.
-- The Gemini client requests **`responseMimeType: application/json`** and passes **`responseJsonSchema`** in `generationConfig` so model outputs match the threat pipeline fields.
-
-### Prompt programs (`src/classifier/prompts/`)
-
-| File | Purpose |
-|------|---------|
-| `single-turn-classify.js` | `buildSingleTurnPrompt(text, decodedText?)` — aligns with classifier schema: `injection_detected`, `confidence`, `attack_class`, `technique`, `injection_spans`, `intent`, `reasoning`. Taxonomy class names from `TAXONOMY_CLASS_NAMES`. |
-| `image-classify.js` | Image / OCR-oriented prompts; `extracted_visible_text` and spans relative to extracted text where applicable. |
-| `trajectory-classify.js` | `buildTrajectoryPrompt(turns)` — trajectory JSON: `trajectory_attack_detected`, `confidence`, `attack_type`, turn indices, `safe_truncation_point`, etc. |
-
-### Threat pipeline (`src/pipeline/threat-pipeline.js`)
-
-**`analyzeText(text, source, options)`**
-
-1. Load settings; threshold = `settings.confidenceThreshold` or default **`CONFIDENCE_THRESHOLD` (0.65)**.
-2. Run unicode + instruction + encoding detectors; optionally `unwrapObfuscation`.
-3. **Gemini gating**: call classifier if there is any local signal **or** text length **> 150** **or** `forceClassifier` **or** source is `CLIPBOARD` / `SCAN` / `COPY`.
-4. **Confirmation**: threat if `(Gemini says injection && confidence ≥ threshold)` **or** `instruction.suspicionScore ≥ 0.8` (even if Gemini weak).
-5. Map `attack_class` / `technique` via `taxonomy-mapper.js`; severity via `severity-scorer.js`; build threat object with spans; **`persistAndBroadcastThreat`**.
-
-**`analyzeImage(mimeType, base64Data, source, options)`**
-
-1. Vision prompt + `callGeminiWithImage`.
-2. If `injection_detected` and confidence ≥ threshold, use `extracted_visible_text` (or placeholder label) as `originalText` for downstream local detectors and span logic.
-3. Threat includes **`previewImageDataUrl`** for UI.
-4. `dispatchWindowEvent` can be disabled (e.g. side panel upload) so the content script does not rely on `window` events there.
-
-**`analyzeTrajectory(turns)`**
-
-- Takes last **`TRAJECTORY_WINDOW` (12)** turns, builds trajectory prompt, returns parsed Gemini JSON (used by session monitor).
-
-### Severity (`severity-scorer.js`)
-
-- Bands from **confidence**: ≥0.9 → `CRITICAL`, ≥0.75 → `HIGH`, ≥0.6 → `MEDIUM`, else `LOW`.
-- If both **unicode anomalies** and **encoding findings**, severity bumps one step up the ordered list.
-
-### Taxonomy (`taxonomy.js`, `taxonomy-mapper.js`)
-
-- Hierarchical **CrowdStrike-style** taxonomy (classes and techniques).
-- `mapToTaxonomyPath(attackClass, technique)` prefers valid **technique** names against `VALID_TECHNIQUES`, else falls back to attack class / fuzzy root match.
-
-### Engines (orchestration)
-
-| Engine | File | Trigger / notes |
-|--------|------|------------------|
-| DOM | `dom-scanner.js` | `MutationObserver` on `document.body`, debounce **`DOM_DEBOUNCE_MS` (250ms)**; full pass aggregates text per hidden element; scans **hidden images** for `alt`/`title`; debounced passes also collect `<img>` nodes from added subtrees / fragments; skips `data-sentientcy` subtrees. |
-| Clipboard | `clipboard-interceptor.js` | Paste (+ `beforeinput` paths in file); image files → `analyzeImage`; text thresholds from **`PASTE_MIN_CHARS_EDITABLE` (8)**; uses `input-resolve.js` for target roots. |
-| Copy | `copy-interceptor.js` | `copy` event (capture); min **`COPY_SCAN_MIN_CHARS` (20)**. |
-| Session | `session-monitor.js` | Only if `detectPlatform()` says LLM platform; stable assistant text after **`STREAMING_STABLE_MS` (500ms)**; trajectory every **3rd** processed assistant (`trajCounter % 3 === 0`); history persisted with `storage.setSessionHistory` / append (capped in storage). |
-
-### Platform detection (`platform/platform-detector.js`, `selectors.js`)
-
-- Hostnames in **`LLM_PLATFORMS`**: `claude.ai`, `chatgpt.com`, `chat.openai.com`, `gemini.google.com` (also subdomains via `endsWith('.${h}')`).
-- **Session monitor** and **session UI** depend on matching **CSS selectors** per platform in `selectors.js`.
-
-### Remediation (`src/content/remediation/`)
-
-- **`remediation-modes.js`**: `SURGICAL`, `HIGHLIGHT`, `BLOCK` (stored in settings).
-- **`dom-remediator.js`**: Page-level handling — **non-BLOCK** modes always **visualize** threats (marks, image outline, or container outline); does not surgically delete hidden injection text in the DOM. **BLOCK** replaces text nodes or image `alt` as configured.
-- **Clipboard** / **session** remediators + **field-highlighter** honor the full remediation mode (including surgical) for paste and fields.
-
----
-
-## Source of truth: `ENGINE` and message types
-
-**`ENGINE`** (`src/shared/constants.js`): `DOM`, `CLIPBOARD`, `SESSION`, `COPY`, `SCAN`, `IMAGE`.
-
-**Content script (`src/content/index.js`)**
-
-- **`attachEarlyMessageBridge()`** registers `chrome.runtime.onMessage` **synchronously** (before async `main`) so scans work immediately.
-- Handles: `SHOW_THREAT`, `SCAN_SELECTION`, `SCAN_KEYBOARD`, `SENTIENTCY_PING`.
-
-**Service worker (`src/background/service-worker.js`)**
-
-- **`sendToTab(tabId, message)`** — `tabs.sendMessage` with **one retry** after **450ms** if the receiving end is not ready.
-- Context menu → `SCAN_SELECTION` with `text`.
-- Command `scan-selection` → `SCAN_KEYBOARD` (content script reads `window.getSelection()`).
-- `THREAT_DETECTED` → badge count + color by severity.
-- `CLEAR_THREATS`, `GET_TAB_ID`, `OPEN_SIDE_PANEL`.
-- `tabs.onRemoved` → clear session storage for tab, drop badge map entry.
-
-**Custom window events** (content page): `sentientcy-threat-detected`, `sentientcy-clipboard-risk`, `sentientcy-scan-busy`, `sentientcy-scan-idle`, `sentientcy-session-health-changed`.
-
----
-
-## Storage schema (`src/shared/storage.js`)
-
-| Key | Purpose |
-|-----|---------|
-| `geminiApiKey` | User API key |
-| `remediationMode` | Normalized remediation mode |
-| `threatLog` | Array of threat objects (newest first, max **100**) |
-| `session_<tabId>` | Conversation turns for trajectory (capped, see `appendSessionTurn` / `setSessionHistory`) |
-| `settings` | Merged with defaults: `remediationMode`, `confidenceThreshold` (default **0.65**), nested `engines`: `{ dom, clipboard, session, copy }` all default **true** |
-
----
-
-## UI surfaces
-
-| Surface | Entry | Notes |
-|---------|--------|--------|
-| **Side panel** | `sidepanel.html` → `Sidepanel.jsx` | Threat **Activity** log, **Gemini** connection pill (API key status), **Choose image** button (vision scan, ~4MB cap), **Selection** shortcuts card + `chrome://extensions/shortcuts` hint, **Protection** engine toggles, **On threat** segmented remediation control, **Clear all**; Tailwind + `sidepanel.css` (scrollbars hidden — content still scrolls). |
-| **Options** | `options.html` → `Options.jsx` | API key, thresholds, engine toggles, remediation mode; matching dark UI and hidden scrollbars |
-| **In-page (content)** | Shadow-mounted `App` | `SessionHealthBar` on LLM sites, `ScanningStrip`, `ThreatPanel`, `RiskModal` — styled in `panel.css` |
-| **Extension action** | `manifest` `action` | `sidePanel.setPanelBehavior({ openPanelOnActionClick: true })` |
-
-There is **no** `popup.html` in the manifest; primary chrome is **side panel** + **options**.
-
----
-
-## Permissions and host access (`manifest.json`)
-
-- **permissions**: `activeTab`, `scripting`, `storage`, `clipboardRead`, `clipboardWrite`, `sidePanel`, `tabs`, `alarms`, `contextMenus`
-- **host_permissions**: `<all_urls>`, `https://generativelanguage.googleapis.com/*`
-- **content_scripts**: `content.js`, `matches: <all_urls>`, `run_at: document_idle`, `all_frames: false`
-- **web_accessible_resources**: `content.css`, `icons/*`
-
----
-
-## Build and development
-
-```bash
-npm install
-npm run build    # production bundle → dist/
-npm run dev      # webpack --watch
+```sh
+git clone https://github.com/desenyon/sentiency.git
+cd sentiency
+npm ci --no-audit
+npm run build
 ```
 
-Load **`dist/`** as an **unpacked** extension in Chrome. After code changes, **reload the extension** and **refresh tabs** so the content script updates.
+1. Open `chrome://extensions` and enable Developer mode.
+2. Choose **Load unpacked** and select the generated `dist/` directory.
+3. Open Sentiency's extension options. Review the transmission disclosure before enabling **Allow remote analysis**.
+4. If remote analysis is wanted, save a Google Gemini API key and enable the individual engines you want. Settings require **Save settings**. The **Test** button sends a fixed test prompt to Google when clicked, independently of the remote-analysis setting.
+5. Reload existing web pages after installing or reloading the extension. Old content scripts can retain an invalid extension context until the page reloads.
 
-**Keyboard shortcut**: `commands.scan-selection` suggests **Ctrl+Shift+S** / **Command+Shift+S**; if it does nothing, assign it under **`chrome://extensions/shortcuts`**.
+`npm run dev` rebuilds in watch mode. Reload the unpacked extension and affected pages after changes. This repository does not publish or deploy the extension automatically.
 
----
+The configured endpoint is `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent`, defined in [`src/shared/constants.js`](src/shared/constants.js). This is a configured preview-model identifier, not a claim of current model availability. Model access, quota, cost, and API compatibility depend on the user's Google project. Tests never contact the live model.
 
-## Repository layout (actual)
+## Privacy and transmission
 
-```
-sentiency-cusor/
-├── manifest.json              # MV3 manifest (points at dist filenames)
-├── package.json
-├── webpack.config.js
-├── tailwind.config.js
-├── postcss.config.js
-├── plan.md                    # Original build spec (may diverge slightly from code)
-├── Sentiency Logo.png         # Brand source (optional); copied into public/icons for builds
-├── public/                    # Copied to dist — icons (logo + extension sizes)
-├── src/
-│   ├── background/service-worker.js
-│   ├── classifier/
-│   │   ├── gemini-client.js
-│   │   ├── gemini-schemas.js # JSON schemas + system snippets for generateContent
-│   │   └── prompts/          # single-turn, trajectory, image
-│   ├── content/
-│   │   ├── index.js          # early message bridge + React app + engine init
-│   │   ├── engines/          # dom-scanner, clipboard-interceptor, copy-interceptor, session-monitor, input-resolve
-│   │   ├── detectors/        # (re-export path: ../../detectors from content)
-│   │   ├── remediation/
-│   │   ├── ui/               # shadow-host, components, panel.css
-│   │   └── clipboard-context.js
-│   ├── detectors/          # visibility, unicode, instruction-pattern, encoding, obfuscation, injection-block-spans
-│   ├── pipeline/           # threat-pipeline, taxonomy-mapper, severity-scorer
-│   ├── platform/           # platform-detector, selectors
-│   ├── options/
-│   ├── sidepanel/
-│   └── shared/             # constants, taxonomy, storage, extension-context, span-utils, removal-spans, engine-labels, LogoMark
-└── dist/                   # generated; not committed in many workflows
-```
+| Action | Content used | Remote behavior |
+| --- | --- | --- |
+| Paste engine | Plain text from a paste event in an eligible editable field; minimum 8 characters | Classifier requested for each intercepted paste, subject to remote opt-in and a key |
+| Copy engine | Selected text on copy; minimum 20 characters | Classifier requested; native copy is not blocked or rewritten |
+| DOM engine | Visually hidden text and hidden image `alt`/`title` metadata | Classifier requested when local signals exist or text exceeds 150 characters; image pixels are not fetched |
+| Session engine | Stable assistant response and, periodically, recent conversation turns on recognized chat pages | Text classification follows the same local-signal/length gate; trajectory analysis sends at most the final 12 turns |
+| Manual selection scan | Current selection at invocation | Classifier requested through the context menu or keyboard shortcut |
+| Sidebar image upload | User-selected PNG, JPEG, GIF, or WebP, at most 4 MiB | Image bytes are sent for OCR; the transcript can then be sent for text classification; visual-only suspicion can trigger another vision request |
+| Options **Test** | A fixed request to reply `OK` and the entered key | Explicit live request when the user clicks Test |
 
-**Note:** `src/content/engines/` imports detectors from **`src/detectors/`** (sibling of `content`, not under `content/detectors/`).
+Requests go directly to Google's Gemini endpoint from the extension service worker; there is no Sentiency application server. The options key test runs in the extension options page. The API key is stored in `chrome.storage.local` and transmitted in the `x-goog-api-key` authentication header, not a URL query parameter. Local extension storage is not an encrypted secret vault. Google's handling of submitted content is governed by the applicable Google service/account terms; this repository makes no provider-retention guarantees.
 
----
+Remote analysis defaults to **off**, including for an upgraded installation whose existing settings have no explicit remote opt-in. Existing saved engine choices are preserved. Turning remote analysis off prevents new classifier requests after the worker reads the setting; it cannot recall an in-flight request. Automatic engine switches independently control capture. Manual scans remain explicit user actions but also require remote opt-in for Gemini access.
 
-## Important implementation details for agents
+### Exclusions and data boundaries
 
-1. **Message ordering**: Never register `chrome.runtime.onMessage` only after long `await` in the content script if background can message immediately — use the **early bridge** pattern in `index.js`.
-2. **Gemini JSON**: Model is instructed to return raw JSON; client still strips **markdown fences** if present.
-3. **Multimodal parts**: Use **`inlineData` + `mimeType`** in JSON (not snake_case) for the Generative Language REST API.
-4. **Restricted pages**: Content scripts do **not** run on `chrome://` or Web Store; scans from context menu / shortcuts will not apply there.
-5. **Unused deps**: **`pdfjs-dist`** / **`tesseract.js`** are not wired — add imports and webpack config if PDF/OCR is required.
+- Password inputs; username/password/one-time-code/payment autocomplete fields; recognized credential labels, names, IDs, placeholders, and ARIA labels; private-marked ancestors; and fields inside recognized credential forms are excluded. Email, telephone, and numeric inputs are also outside automatic paste interception.
+- Page authors can opt a subtree out with `data-sentiency-private` or `data-private`. These markers are exclusions, not assertions that another subtree is safe.
+- DOM scanning excludes editors, form controls, scripts, styles, templates, and extension UI. Sensitive selections are excluded from copy and manual scans.
+- The checks run before reading clipboard payloads, and target validity is checked again before remote dispatch and delayed insertion/remediation. Content already dispatched cannot be withdrawn if the page later changes the field.
+- No background polling of `navigator.clipboard` occurs. No clipboard history is read. Automatic image/file and HTML-only pastes retain native behavior and are **not scanned**. Images can be scanned explicitly in the sidebar.
+- Raw text, decoded text, image previews, model reasoning, intent, technique prose, and quoted spans are **not persisted in the activity log**. Notifications to the worker carry allowlisted metadata. Content UI events use an isolated-world `EventTarget`, not raw `window` custom events. The transient preview UI uses a closed shadow root.
+- Source text and model results still exist in memory during analysis and while a current in-page preview is displayed. Paste transactions/context expire after 15 minutes and invalidate on subsequent edits, replacement transactions, detached targets, or new credential exclusions. Dismissal does not guarantee immediate removal of every in-memory reference; other preview state and pending transactions can retain it until they are cleared or expire. Navigating away destroys the content-script context. A closed shadow root is not a complete security boundary against the page or other extensions.
 
----
+The baseline `3bd2928` accepted password inputs and could send qualifying pastes to Gemini when a key was configured. It also retained raw threat content. This upgrade corrects the source-level risk; it does **not establish that any historical exposure happened**. On worker startup, legacy threat/session records are minimized. If storage fails, migration can fail too; **Clear everything** in options provides an explicit data-removal action, with failure reporting.
 
-## Version
+## Engines and remediation
 
-`package.json` / `manifest.json`: **1.0.0** / name **Sentiency**.
+All automatic engines are opt-in. They start only after the content script and its settings have initialized. Chromium internal pages, other extensions' pages, inaccessible frames, and pages without a running content script are outside coverage.
 
-<!-- architecture-atlas-v5:start -->
-## Architecture Atlas v5
+### Paste
 
-These editable Mermaid diagrams mirror the [Notion architecture dossier](https://app.notion.com/p/3b467342e8c181b2af2ae5690070d5a5?pvs=204).
+The capture-phase handler reads cached engine state and cancels a supported paste **synchronously**, before any `await`. It preserves the field's original selection and content in a transaction. A paired `paste`/`beforeinput` delivery in the same event task is handled once. Standalone `beforeinput` with usable text is supported. Noncancelable, short, unsupported, and uninitialized cases keep native behavior.
 
-### 1. Threat-boundary anatomy
+A result applies only while the captured target is unchanged and still eligible. Moving the caret alone does not change the saved insertion position. Typing, programmatic value changes, DOM replacement, a newer paste, or removal invalidate the prior transaction. A stale result is discarded rather than appended to another field or applied over newer text. Frameworks may ignore synthetic input events or replace nodes; the guard refuses further actions when the captured field diverges.
+
+| Mode | Paste behavior |
+| --- | --- |
+| **SURGICAL** | Remove resolved model/local spans and insert the remainder. If all content is removed, the replacement is empty. A confirmed threat with no usable spans is withheld entirely. Original text is never reinserted as a sanitization fallback. |
+| **HIGHLIGHT** | Insert the original plain text and show a warning/current threat preview for review. The name remains for compatibility; field text is not decorated with inline highlights. |
+| **BLOCK** | Preserve or restore the original selection without inserting the intercepted payload. |
+
+Changing modes in the current threat UI replaces that transaction's insertion, rather than pasting again. Repeated actions are idempotent while the field remains unchanged. The current mode preference also applies to future pastes.
+
+If classification is unavailable and there is no strong local detection, the intercepted paste remains paused. A short-lived notice offers an explicit **Insert without verification** action, guarded by the same transaction. No unavailable result is presented as a clean scan. Local heuristics can still flag a sufficiently strong signal when remote classification is unavailable.
+
+Eligible rich editors use DOM ranges and literal text nodes, preserving surrounding nodes. Native rich formatting is not retained when the extension handles a plain-text paste. Complex editors, IME behavior, provider-specific event handling, cross-origin frames, and shadow-tree editors are not comprehensively supported. Unsupported selection capture falls back to native paste without analysis.
+
+### DOM
+
+The scanner collects mutation candidates in a cumulative `Set`, drains them sequentially, and keeps changes arriving during an active scan. It observes text, child nodes, and selected visibility/metadata attributes. Unchanged payloads are deduplicated per element. Before applying a result it rechecks connection, privacy eligibility, visibility, and exact content.
+
+DOM remediation preserves descendant identity, listeners, formatting, and media. **SURGICAL/HIGHLIGHT** outline the affected element; they do not remove text from the page. **BLOCK** hides the element with a reversible style change. An adjacent undo button restores prior attributes if the page has not subsequently changed those attributes. A hidden element's outline may itself remain invisible. Undo is cosmetic/local; it does not revoke content already processed by a website.
+
+### Copy and manual selection
+
+The copy engine analyzes a snapshot but does not delay, sanitize, or prevent native copying. Its warning can arrive after the text has already been used elsewhere. Manual scanning is available through **Scan selection with Sentiency** and the default `Ctrl+Shift+S` / macOS `Command+Shift+S` shortcut. Chrome may require changing a conflicting shortcut in `chrome://extensions/shortcuts`.
+
+### Sessions
+
+Selectors recognize Claude, ChatGPT (including the legacy hostname), and Gemini page structures. They are heuristics, not integrations with provider APIs. After 500 ms without relevant mutations, a new assistant response is assessed. Every third successfully processed response triggers trajectory analysis over up to 12 recent turns. Results are rejected when the captured conversation changes.
+
+The trajectory model uses local one-based indices. The pipeline adds the sliding-window offset before highlighting the original snapshot nodes or displaying truncation advice. A zero safe cutoff is preserved and mapped correctly; `null` remains unknown. Earlier turns outside the window were not assessed. The extension cannot delete provider messages, roll back a provider's model state, or guarantee a safe truncation point.
+
+### Images
+
+Sidebar upload is an explicit remote operation: dedicated vision transcription, then text classification, with a possible visual-only fallback. OCR can omit or alter characters. Results therefore need manual review. Model output never becomes executable HTML. Pixel analysis is not a local OCR feature; the previously unused PDF/Tesseract dependencies were removed.
+
+## Classification and failure states
+
+The local pipeline detects instruction patterns, Unicode anomalies, encodings, bracketed injection blocks, and selected obfuscation patterns. It combines those signals with taxonomy mapping and severity scoring. The default confidence threshold is 0.65, configurable from 0.50 to 0.90. A strong local instruction score (at least 0.8) can confirm a local heuristic threat even without Gemini. Those scores are heuristic thresholds, not calibrated probabilities.
+
+Gemini responses are checked for required types, finite confidence in `[0,1]`, exact UTF-16 span offsets/substrings, OCR block consistency, and trajectory bounds. Only a completed `STOP` response with valid JSON/schema is accepted. Unknown response properties are discarded. Refusals, truncation, malformed JSON, invalid spans, authentication errors, disabled remote access, missing keys, and network failures produce explicit unavailability. The client does not silently weaken its response schema on HTTP 400.
+
+Each classifier operation has a **12-second total deadline**, covering settings/key reads, fetch, and response parsing. There are at most two HTTP attempts, with a retry only for 429 or 5xx responses. At most four worker classifier operations run concurrently; additional requests report busy. Worker-message callers have a 14-second response deadline. Text/trajectory inputs are limited to 50,000 characters; images are capped at 4 MiB. An image workflow can use multiple bounded operations, so its overall time can exceed 12 seconds.
+
+Public helpers remain available:
+
+- `analyzeText(text, source, options)` → threat or `null`; unavailability throws `AnalysisUnavailableError` unless a strong local threat is available.
+- `analyzeTextResult(...)` → `{ status: 'threat' | 'no_threat_detected' | 'unavailable', ... }`.
+- `analyzeImage(...)` → threat or `null`; unavailability throws.
+- `analyzeTrajectory(turns)` → mapped trajectory result or explicit unavailable result.
+- `remediateClipboard(text, threat, element, forcedMode?, transaction?)` accepts the original arguments plus an optional transaction; current UI callers pass the captured transaction.
+
+`null`/`no_threat_detected` means no threshold-crossing signal was found under the checks performed. It does not mean safe. Historical integrations listening for raw page-window custom events must migrate to the internal content event bus; the unsafe raw event channel is intentionally removed.
+
+## Persistence and architecture
 
 ```mermaid
 flowchart LR
-  PAGE["Web page + user gestures"] --> CAPTURE["Content script collectors<br>DOM mutations, copy, paste, images, manual scan"]
-  CAPTURE --> CANON["Unicode canonicalizer + visibility analysis"]
-  CANON --> LOCAL["Local detector ensemble<br>instructions, encoding, obfuscation, hidden text"]
-  LOCAL --> SCORE["Evidence-preserving local score"]
-  SCORE --> POLICY{"Privacy and remote-classification policy"}
-  POLICY -->|local only| SEVERITY["Taxonomy + severity policy"]
-  POLICY -->|configured opt-in| BG["Manifest V3 service worker"] --> GEMINI["Structured Gemini classifier"] --> SEVERITY
-  SEVERITY --> REMEDY["Warn, highlight, block, sanitize, suppress or allow"]
-  REMEDY --> UI["Side panel + options UI"]
-  SEVERITY --> STORE[("Findings, settings, allow/deny patterns")]
-  TRAJ["Supported AI-session trajectory events"] --> TIMELINE["Cross-turn risk analyzer"] --> STORE
+  Page[Eligible page event] --> Guard[Privacy and target checks]
+  Guard --> Local[Local detectors]
+  Local -->|opt-in + key| Worker[MV3 service worker]
+  Worker -->|bounded request| Gemini[Google Gemini]
+  Gemini --> Validate[Response validation]
+  Validate --> Result[Transient result]
+  Local --> Result
+  Result --> Recheck[Recheck target / transaction]
+  Recheck --> UI[Closed-shadow UI and remediation]
+  Result --> Minimize[Allowlisted metadata]
+  Minimize --> Queue[Worker storage queue]
+  Queue --> Storage[chrome.storage.local]
 ```
 
-### 2. Detection and remediation wiring
+The worker is the single writer for extension storage mutations. It serializes append, settings patches, clears, session operations, and startup minimization. A response acknowledges a write only after the Chrome callback completes; failures reject instead of masquerading as success. The queue survives individual failed operations. Completed data persists across worker restarts; unacknowledged in-flight operations are not promised to survive termination. External writes through DevTools or another extension are outside this queue.
 
-```mermaid
-flowchart TB
-  RAW["Potentially hostile page or clipboard content"] --> MIN["Minimize payload and preserve origin metadata"]
-  MIN --> DETECT["Parallel local detectors"]
-  DETECT --> EVIDENCE["Matched spans, detector IDs, confidence"]
-  EVIDENCE --> DECIDE{"Remote classifier required and allowed?"}
-  DECIDE -->|no| MAP["Local taxonomy mapping"]
-  DECIDE -->|yes| REQUEST["Fenced structured request"] --> REMOTE["Remote classification"] --> MAP
-  MAP --> ACTION{"Severity + user policy"}
-  ACTION --> ALLOW["Allow / annotate"]
-  ACTION --> WARN["Warn / highlight"]
-  ACTION --> BLOCK["Block / sanitize"]
-  ALLOW --> LOG[("Per-tab trajectory and finding log")]
-  WARN --> LOG
-  BLOCK --> LOG
-  LOG --> PANEL["Explain evidence and reversible remediation"]
+| Storage key | Retained content |
+| --- | --- |
+| `geminiApiKey` | User's API key |
+| `settings`, `engines`, `remediationMode` | Validated preferences |
+| `threatLog` | Latest 100 deduplicated metadata records: generated ID, time, engine, severity, confidence, recognized taxonomy root, partial/metadata flags; no raw text, prose, images, or quoted spans |
+| `session_<tabId>` | Compatibility helpers retain up to 20 role/timestamp entries without conversation content; the current monitor uses transient DOM snapshots |
+
+Log clearing/export is available in the sidebar/options. Export contains the same minimized records. **Clear everything** serializes removal of all local extension data, including the key and preferences. Session entries are removed when a tab closes. Badge counts are in-memory worker state and may reset when the worker restarts; they are not a durable audit total. Storage success does not imply the classifier result was correct.
+
+```text
+src/background/             worker, message routing, badges, context menu
+src/classifier/             Gemini transport, validators, prompts, response schemas
+src/content/engines/        privacy-aware paste/copy/DOM/session capture
+src/content/remediation/    paste transactions, reversible DOM/session UI
+src/content/ui/             closed-shadow React UI
+src/detectors/              local text/visibility heuristics
+src/pipeline/               classification, taxonomy, scoring, trajectory mapping
+src/shared/                 settings, serialized storage API, privacy, spans
+src/options/                settings and explicit API test
+src/sidepanel/              metadata history and explicit image upload
+tests/unit/                 synthetic unit/integration regressions
+tests/browser/              built MV3 extension regressions with mocked Gemini
 ```
 
-### 3. Runtime narrative
+The manifest currently requests `activeTab`, `scripting`, `storage`, `clipboardRead`, `clipboardWrite`, `sidePanel`, `tabs`, `alarms`, and `contextMenus`, plus broad host access for content scripts and Gemini. Some permissions are historical and broader than the current code needs; this upgrade does not change the manifest permissions. Content scripts run at `document_idle` in top-level frames only (`all_frames: false`). No analytics/telemetry sender is implemented.
 
-```mermaid
-sequenceDiagram
-  actor User
-  participant C as Content Script
-  participant L as Local Detectors
-  participant B as Background Worker
-  participant R as Remote Classifier
-  participant U as Side Panel / Storage
-  User->>C: page mutation, copy, paste, image or manual scan
-  C->>L: canonicalized visible and hidden content
-  L-->>C: local evidence, score and matched attack classes
-  C->>B: minimal structured finding candidate
-  alt remote classification configured and necessary
-    B->>R: privacy-minimized fenced request
-    R-->>B: taxonomy, severity, confidence, remediation
-  end
-  B->>U: persist evidence and update risk timeline
-  U-->>C: allow, warn, highlight, sanitize or block
-  C-->>User: reversible intervention with explanation
+## Test and verify
+
+```sh
+npm ci --no-audit
+npm run lint
+npm test
+npm run build
+npx playwright install chromium
+npm run test:browser
+# After installing the browser:
+npm run verify
 ```
 
-### 4. Reliability model
+On Linux CI, use `npx playwright install --with-deps chromium`. The browser suite launches a fresh temporary Chromium profile and loads `dist/`; it never uses a personal browser profile. A synthetic page is served by Playwright request interception. Worker `fetch` is replaced with synthetic Gemini responses before analysis is enabled, and unrelated page requests are blocked. No real credentials or live Gemini calls are part of the suite.
 
-```mermaid
-stateDiagram-v2
-  [*] --> IDLE
-  IDLE --> CAPTURING --> LOCAL_SCAN
-  LOCAL_SCAN --> REMOTE_CLASSIFY: opt-in and uncertainty threshold met
-  LOCAL_SCAN --> FINDING: local decision sufficient
-  REMOTE_CLASSIFY --> FINDING
-  FINDING --> REMEDIATING
-  REMEDIATING --> SUPPRESSED
-  REMEDIATING --> ALLOWED
-  LOCAL_SCAN --> PRIVACY_BLOCKED: remote payload disallowed
-  REMOTE_CLASSIFY --> ERROR: timeout or classifier failure
-  ERROR --> FINDING: degrade to local evidence
-```
+Coverage includes credential exclusions before payload access, settings hydration, synchronous paste/beforeinput cancellation and deduplication, full removal, overlapping spans, rich-editor node preservation, transaction undo and stale edits, inert model HTML, private events, metadata minimization, concurrent storage mutations/clear barriers, restart-compatible storage, malformed/refused/truncated classifier responses, deadlines/retry bounds, DOM mutation accumulation, stale nodes, and trajectory mapping beyond 12 turns. Browser tests additionally exercise real extension messaging, worker persistence, options, and sidebar rendering.
 
-<!-- architecture-atlas-v5:end -->
+[CI](.github/workflows/ci.yml) runs lint, unit/integration tests, production build, and Chromium extension regressions on pushes and pull requests. Browser traces/screenshots are uploaded on failure. CI uses no Gemini secrets. Passing tests verify these synthetic cases, not coverage of every live site or model quality. See [upgrade design](docs/upgrade-design.md) for the invariants motivating the changes.
+
+`npm run deck:pptx` regenerates the historical hackathon presentation. Files under `presentations/` and `plan.md` are historical material and may describe behavior that differs from this README/current implementation.
+
+## Limitations and troubleshooting
+
+- **Nothing happens:** engines are off by default; save settings and reload the target page. The page/field may be excluded or unsupported.
+- **Paste paused / scan unavailable:** enable remote analysis and configure a key if Gemini is desired. Check quota/model access outside the automated test suite. A failure is not a clean verdict. For an unchanged field, the notice allows deliberate unverified insertion.
+- **Mode action has no effect:** the original transaction expired, the field changed, or the framework replaced its nodes. Re-paste to create a fresh transaction.
+- **Session coverage missing:** provider DOM selectors can change; virtualized or hidden messages may be absent. Gemini's selector support is heuristic. No live provider UI is exercised by CI.
+- **False positives/negatives:** quoted security discussions can resemble attacks; Unicode/encoding signals can be benign. OCR/model output and locally selected removal spans can be wrong. Review resulting text before use.
+- **Rich editor behavior:** selection ranges, controlled inputs, composition events, files/images, and site-native handlers vary. Unsupported or early pastes retain native behavior with no analysis. Sentiency cannot reliably intercept every data path.
+- **Large pages:** scanning is sequential, but mutation collection still walks relevant subtrees and can consume CPU. There is no complete hostile-page resource-isolation guarantee.
+- **Legacy data:** startup minimization is best-effort durable work and can fail with unavailable/full storage. The extension cannot prove whether old versions transmitted content or remove data already sent to a provider.
+- **Dependencies:** `--no-audit` prevents an advisory lookup during installation; it is not a claim that dependencies have no vulnerabilities. Run an advisory audit separately only when sending dependency metadata to the registry is authorized.

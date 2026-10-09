@@ -1,14 +1,15 @@
+import { contentEvents } from '../../events';
 import React, { useEffect, useState } from 'react';
 import { LogoMark } from '../../../shared/LogoMark';
 
 export function SessionHealthBar({ onOpenPanel }) {
-  const [health, setHealth] = useState('safe');
+  const [health, setHealth] = useState('unknown');
   const [transitionKey, setTransitionKey] = useState(0);
 
   useEffect(() => {
-    const fn = (e) => setHealth(e.detail?.health || 'safe');
-    window.addEventListener('sentientcy-session-health-changed', fn);
-    return () => window.removeEventListener('sentientcy-session-health-changed', fn);
+    const fn = (e) => setHealth(e.detail?.health || 'unknown');
+    contentEvents.addEventListener('sentientcy-session-health-changed', fn);
+    return () => contentEvents.removeEventListener('sentientcy-session-health-changed', fn);
   }, []);
 
   useEffect(() => {
@@ -16,21 +17,21 @@ export function SessionHealthBar({ onOpenPanel }) {
   }, [health]);
 
   const sessionClass =
-    health === 'compromised' ? 'bad' : health === 'warning' ? 'warn' : 'safe';
+    health === 'compromised' ? 'bad' : health === 'checked' ? 'safe' : 'warn';
 
   const label =
     health === 'compromised'
       ? 'Session may be compromised — open panel for details'
       : health === 'warning'
         ? 'Potential threat in this chat session'
-        : 'Session looks healthy';
+        : health === 'checked' ? 'No threat detected in the latest checked response' : health === 'disabled' ? 'Session monitoring is off' : health === 'unavailable' ? 'Session analysis unavailable' : 'Session not yet assessed';
 
   const dotClass =
     health === 'compromised'
       ? 'sentientcy-dot-red'
       : health === 'warning'
         ? 'sentientcy-dot-amber'
-        : 'sentientcy-dot-green';
+        : health === 'checked' ? 'sentientcy-dot-green' : 'sentientcy-dot-amber';
 
   return (
     <button

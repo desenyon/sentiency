@@ -44,7 +44,7 @@ export function resolveRemovalSpans(plainText, threat) {
 
 export function buildSurgicalText(plainText, spans) {
   if (!plainText || !spans || !spans.length) return plainText || '';
-  const sorted = [...spans].sort((a, b) => a.start - b.start);
+  const sorted = mergeAndClampSpans(spans, plainText.length);
   let out = '';
   let i = 0;
   for (const sp of sorted) {

@@ -31,9 +31,12 @@ const SENTIENTCY_THEME_FALLBACK = `
 #sentientcy-mount .sentientcy-progress-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,#dc2626,#991b1b)!important}
 `;
 
+let ownHost;
+let ownShadow;
+
 export async function initShadowHost() {
   const id = 'sentientcy-host';
-  let host = document.getElementById(id);
+  let host = ownHost?.isConnected ? ownHost : null;
   if (!host) {
     host = document.createElement('div');
     host.id = id;
@@ -41,10 +44,11 @@ export async function initShadowHost() {
     document.body.appendChild(host);
   }
 
-  if (!host.shadowRoot) {
-    host.attachShadow({ mode: 'open' });
+  if (host !== ownHost) {
+    ownHost = host;
+    ownShadow = host.attachShadow({ mode: 'closed' });
   }
-  const shadow = host.shadowRoot;
+  const shadow = ownShadow;
   while (shadow.firstChild) shadow.removeChild(shadow.firstChild);
 
   let cssText = '';

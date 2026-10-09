@@ -75,7 +75,7 @@ function SidePanelApp() {
     setEngines(s.engines);
     setMode(s.remediationMode || REMEDIATION_MODES.SURGICAL);
     const key = await storage.getApiKey();
-    setApiOk(!!key);
+    setApiOk(!!key && s.remoteAnalysisEnabled);
   }, []);
 
   useEffect(() => {
@@ -114,7 +114,7 @@ function SidePanelApp() {
   const toggleEngine = async (key) => {
     const cur = engines || (await storage.getEngines());
     const next = { ...cur, [key]: !cur[key] };
-    await storage.setSettings({ engines: next });
+    await storage.setSettings({ engines: { [key]: next[key] } });
     setEngines(next);
   };
 
@@ -160,7 +160,7 @@ function SidePanelApp() {
       return;
     }
     if (!apiOk) {
-      setImageError('Add your API key in Settings first.');
+      setImageError('Add your API key and enable remote analysis in Settings first.');
       return;
     }
     setImageBusy(true);
@@ -370,7 +370,7 @@ function SidePanelApp() {
             <ul className="mt-6 border-t border-zinc-800/80">
               {threats.slice(0, 15).map((th) => {
                 const visual = threatHasVisualMultimodalSignals(th);
-                const preview = (th.originalText || '').slice(0, 600);
+                const preview = th.metadataOnly ? 'Content is not retained. Review transient details in the original page.' : (th.originalText || '').slice(0, 600);
                 const truncated = (th.originalText || '').length > 600;
                 return (
                   <li key={th.id} className="border-b border-zinc-800/60">

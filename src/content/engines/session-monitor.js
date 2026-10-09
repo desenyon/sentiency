@@ -1,117 +1,77 @@
-import { analyzeText, analyzeTrajectory } from '../../pipeline/threat-pipeline';
+import { analyzeText, analyzeTrajectory, persistAndBroadcastThreat } from '../../pipeline/threat-pipeline';
 import { remediateSession } from '../remediation/session-remediator';
 import { ENGINE, STREAMING_STABLE_MS } from '../../shared/constants';
-import { storage } from '../../shared/storage';
-import { safeRuntimeSendMessage } from '../../shared/extension-context';
+import { watchEngines, DEFAULT_ENGINES, storage } from '../../shared/storage';
+import { containsSensitiveContent } from '../../shared/privacy';
+import { emitContentEvent } from '../events';
 
-function classifyTurn(el, selectors) {
-  if (!el || !selectors) return null;
-  try {
-    if (selectors.userMessage && el.querySelector(selectors.userMessage)) return 'user';
-    if (selectors.assistantMessage && el.querySelector(selectors.assistantMessage)) return 'assistant';
-  } catch {
-    return null;
+export function snapshotSession(selectors) {
+  const out = [];
+  for (const node of document.querySelectorAll(selectors.messageContainer)) {
+    if (containsSensitiveContent(node)) continue;
+    const matches = (selector) => selector && (node.matches(selector) || node.querySelector(selector));
+    const role = matches(selectors.userMessage) ? 'user' : matches(selectors.assistantMessage) ? 'assistant' : null;
+    const content = node.textContent || '';
+    if (role && content.trim()) out.push({ role, content, node });
   }
-  return null;
-}
-
-function turnText(el) {
-  return (el.textContent || '').trim();
+  return out;
 }
 
 export function initSessionMonitor(platformInfo) {
   if (!platformInfo?.isLLMPlatform || !platformInfo.selectors) return () => {};
-
-  let tabId = null;
-  let health = 'safe';
-  let lastAssistantSig = '';
-  let stableTimer = null;
-  let pendingText = '';
-  let observer = null;
-  let trajCounter = 0;
-
-  const emitHealth = () => {
-    window.dispatchEvent(new CustomEvent('sentientcy-session-health-changed', { detail: { health } }));
-  };
-
-  safeRuntimeSendMessage({ type: 'GET_TAB_ID' }, (res) => {
-    tabId = res?.tabId ?? null;
-  });
-
   const selectors = platformInfo.selectors;
-  const root =
-    document.querySelector(selectors.messageContainer)?.closest('main') ||
-    document.querySelector('main') ||
-    document.body;
-
-  const snapshotTurns = () => {
-    const nodes = Array.from(document.querySelectorAll(selectors.messageContainer));
-    const out = [];
-    nodes.forEach((node) => {
-      const role = classifyTurn(node, selectors);
-      if (!role) return;
-      const content = turnText(node);
-      if (!content) return;
-      out.push({ role, content });
-    });
-    return out;
-  };
-
-  const processAssistantStable = async (text) => {
-    const engines = await storage.getEngines();
-    if (!engines.session) return;
-    if (!text || text === lastAssistantSig) return;
-    lastAssistantSig = text;
-
-    const settings = await storage.getSettings();
-    const threshold =
-      typeof settings.confidenceThreshold === 'number' ? settings.confidenceThreshold : 0.65;
-
-    const conv = snapshotTurns();
-    if (tabId != null) {
-      await storage.setSessionHistory(tabId, conv);
-    }
-
-    const threat = await analyzeText(text, ENGINE.SESSION);
-    if (threat) {
-      health = threat.severity === 'CRITICAL' || threat.severity === 'HIGH' ? 'compromised' : 'warning';
-      emitHealth();
-    }
-
-    trajCounter++;
-    if (trajCounter % 3 !== 0) return;
-    if (conv.length < 2) return;
-
-    const traj = await analyzeTrajectory(conv);
-    const ok = traj && !traj.parseError && !traj.networkError;
-    const conf = ok ? Number(traj.confidence) || 0 : 0;
-    if (ok && traj.trajectory_attack_detected && conf >= threshold) {
-      health = 'compromised';
-      emitHealth();
-      remediateSession(traj, platformInfo.platform, selectors);
-    }
-  };
-
-  const onMutations = () => {
-    const turns = snapshotTurns();
-    const lastAsst = [...turns].reverse().find((t) => t.role === 'assistant');
-    if (!lastAsst) return;
-    const t = lastAsst.content;
-    pendingText = t;
-    clearTimeout(stableTimer);
-    stableTimer = setTimeout(() => {
-      processAssistantStable(pendingText);
-    }, STREAMING_STABLE_MS);
-  };
-
-  observer = new MutationObserver(onMutations);
-  observer.observe(root, { subtree: true, childList: true, characterData: true });
-
-  onMutations();
-  emitHealth();
-
-  return () => {
-    observer?.disconnect();
-    clearTimeout(stableTimer);
-  };
+  let engines = { ...DEFAULT_ENGINES };
+  let stopped = false;
+  let timer;
+  let revision = 0;
+  let running = false;
+  let pending = false;
+  let lastSignature = '';
+  let counter = 0;
+  let url = location.href;
+  const emit = (health) => emitContentEvent('sentientcy-session-health-changed', { health });
+  async function process() {
+    if (running) { pending = true; return; }
+    if (!engines.session || stopped) return;
+    const turns = snapshotSession(selectors);
+    const assistant = [...turns].reverse().find((turn) => turn.role === 'assistant');
+    const signature = JSON.stringify(turns.map(({ role, content }) => [role, content]));
+    if (!assistant || signature === lastSignature) return;
+    const version = revision;
+    const pageUrl = location.href;
+    const isCurrent = () => !stopped && engines.session && version === revision && location.href === pageUrl
+      && turns.every((turn) => turn.node.isConnected && !containsSensitiveContent(turn.node) && turn.node.textContent === turn.content);
+    running = true;
+    try {
+      const threshold = (await storage.getSettings()).confidenceThreshold;
+      if (!isCurrent()) return;
+      const threat = await analyzeText(assistant.content, ENGINE.SESSION, { skipPersist: true, isCurrent });
+      if (!isCurrent()) return;
+      lastSignature = signature;
+      emit(threat ? 'warning' : 'checked');
+      if (threat) await persistAndBroadcastThreat(threat, true);
+      counter++;
+      if (counter % 3 || turns.length < 2 || !isCurrent()) return;
+      const trajectory = await analyzeTrajectory(turns);
+      if (!isCurrent()) return;
+      if (trajectory.networkError) { emit('unavailable'); return; }
+      if (trajectory.trajectory_attack_detected && trajectory.confidence >= threshold) {
+        emit('compromised');
+        remediateSession(trajectory, platformInfo.platform, selectors, turns.map((turn) => turn.node));
+      }
+    } catch { if (isCurrent()) emit('unavailable'); }
+    finally { running = false; if (pending) { pending = false; void process(); } }
+  }
+  function schedule() {
+    revision++;
+    if (location.href !== url) { url = location.href; counter = 0; lastSignature = ''; emit('unknown'); }
+    clearTimeout(timer);
+    timer = setTimeout(() => void process(), STREAMING_STABLE_MS);
+  }
+  const stopSettings = watchEngines((value) => { engines = value; emit(value.session ? 'unknown' : 'disabled'); schedule(); });
+  const observer = new MutationObserver((records) => {
+    if (records.some((record) => !record.target.parentElement?.closest('#sentientcy-host, [data-sentientcy]') && !record.target.closest?.('#sentientcy-host, [data-sentientcy]'))) schedule();
+  });
+  observer.observe(document.body, { subtree: true, childList: true, characterData: true });
+  return () => { stopped = true; revision++; observer.disconnect(); stopSettings(); clearTimeout(timer); };
 }

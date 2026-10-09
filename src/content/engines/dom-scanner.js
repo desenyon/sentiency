@@ -1,148 +1,83 @@
 import { analyzeVisibility } from '../../detectors/visibility-analyzer';
-import { analyzeText } from '../../pipeline/threat-pipeline';
+import { analyzeText, persistAndBroadcastThreat } from '../../pipeline/threat-pipeline';
 import { remediateDOM } from '../remediation/dom-remediator';
 import { ENGINE, DOM_DEBOUNCE_MS } from '../../shared/constants';
-import { storage } from '../../shared/storage';
+import { watchEngines, DEFAULT_ENGINES } from '../../shared/storage';
+import { containsSensitiveContent } from '../../shared/privacy';
 
-function isSentientcyNode(node) {
-  if (!node || node.nodeType !== 1) return false;
-  if (node.getAttribute && node.getAttribute('data-sentientcy')) return true;
-  return !!node.closest?.('[data-sentientcy]');
+function eligible(el) {
+  return el?.isConnected && !el.closest('script, style, noscript, template, input, textarea, select, [contenteditable], #sentientcy-host, [data-sentientcy]') && !containsSensitiveContent(el);
 }
-
-function textAncestors(root) {
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-    acceptNode(n) {
-      const p = n.parentElement;
-      if (!p || isSentientcyNode(p)) return NodeFilter.FILTER_REJECT;
-      const t = n.nodeValue || '';
-      if (!t.trim()) return NodeFilter.FILTER_REJECT;
-      return NodeFilter.FILTER_ACCEPT;
-    },
-  });
-  const map = new Map();
-  let cur;
-  while ((cur = walker.nextNode())) {
-    const p = cur.parentElement;
-    if (!p) continue;
-    const prev = map.get(p) || '';
-    map.set(p, prev + cur.nodeValue);
-  }
-  return map;
-}
-
-async function scanElement(el) {
-  const engines = await storage.getEngines();
-  if (!engines.dom) return;
-  if (isSentientcyNode(el)) return;
-
-  const vis = analyzeVisibility(el);
-  const text = (el.textContent || '').trim();
-  if (!text || text.length < 8) return;
-  if (!vis.isHidden) return;
-
-  const threat = await analyzeText(text, ENGINE.DOM);
-  if (threat) await remediateDOM(el, threat);
-}
-
-async function scanImage(img) {
-  const engines = await storage.getEngines();
-  if (!engines.dom) return;
-  if (isSentientcyNode(img)) return;
-
-  const vis = analyzeVisibility(img);
-  if (!vis.isHidden) return;
-
-  const alt = (img.getAttribute('alt') || '').trim();
-  const title = (img.getAttribute('title') || '').trim();
-  const payload = alt.length >= 8 ? alt : title.length >= 8 ? title : '';
-  if (!payload) return;
-
-  const threat = await analyzeText(payload, ENGINE.DOM);
-  if (!threat) return;
-  const enriched = { ...threat, originalText: threat.originalText || payload };
-  await remediateDOM(img, enriched);
+function payload(el) {
+  if (el.tagName === 'IMG') return el.getAttribute('alt') || el.getAttribute('title') || '';
+  return el.textContent || '';
 }
 
 export function initDOMScanner() {
-  let timer = null;
-
-  const run = async () => {
-    const engines = await storage.getEngines();
-    if (!engines.dom) return;
-    const map = textAncestors(document.body);
-    for (const [el, combined] of map) {
-      if (combined.length < 12) continue;
-      const vis = analyzeVisibility(el);
-      if (!vis.isHidden) continue;
-      const threat = await analyzeText(combined, ENGINE.DOM);
-      if (threat) await remediateDOM(el, threat);
+  let engines = { ...DEFAULT_ENGINES };
+  let stopped = false;
+  let running = false;
+  let timer;
+  const pending = new Set();
+  const scanned = new WeakMap();
+  function collect(node) {
+    const el = node?.nodeType === 1 ? node : node?.parentElement;
+    if (!el || el.closest('#sentientcy-host, [data-sentientcy]')) return;
+    if (eligible(el) && el.tagName === 'IMG') pending.add(el);
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    let text;
+    while ((text = walker.nextNode())) {
+      if (eligible(text.parentElement) && text.nodeValue.trim().length >= 8) pending.add(text.parentElement);
     }
-    const imgs = document.body?.querySelectorAll?.('img') || [];
-    for (const img of imgs) {
-      await scanImage(img);
-    }
-  };
-
-  const schedule = (nodes) => {
-    clearTimeout(timer);
-    timer = setTimeout(async () => {
-      const engines = await storage.getEngines();
-      if (!engines.dom) return;
-      const seen = new Set();
-      const seenImgs = new Set();
-
-      const collectImgs = (root) => {
-        if (!root) return;
-        if (root.nodeType === 1) {
-          if (root.tagName === 'IMG') seenImgs.add(root);
-          root.querySelectorAll?.('img').forEach((img) => seenImgs.add(img));
-        } else if (root.nodeType === 11) {
-          root.childNodes.forEach((ch) => collectImgs(ch));
-        }
-      };
-
-      nodes.forEach((n) => {
-        collectImgs(n.nodeType === 1 || n.nodeType === 11 ? n : null);
-        if (n.nodeType === 1 && n.tagName === 'IMG') seenImgs.add(n);
-
-        let el = n.nodeType === 1 ? n : n.parentElement;
-        while (el && el !== document.body) {
-          if (isSentientcyNode(el)) return;
-          if (el.nodeType === 1 && (el.textContent || '').trim().length >= 12) {
-            seen.add(el);
-          }
-          el = el.parentElement;
-        }
-      });
-      for (const el of seen) {
-        await scanElement(el);
-      }
-      for (const img of seenImgs) {
-        await scanImage(img);
-      }
-    }, DOM_DEBOUNCE_MS);
-  };
-
-  const obs = new MutationObserver((records) => {
-    const touched = [];
-    records.forEach((r) => {
-      if (r.type === 'childList') {
-        r.addedNodes.forEach((n) => touched.push(n));
-      } else if (r.type === 'characterData' && r.target) {
-        touched.push(r.target);
-      }
-    });
-    if (touched.length) schedule(touched);
-  });
-
-  if (document.body) {
-    obs.observe(document.body, { subtree: true, childList: true, characterData: true });
-    run();
-  } else {
-    document.addEventListener('DOMContentLoaded', () => {
-      obs.observe(document.body, { subtree: true, childList: true, characterData: true });
-      run();
-    });
+    el.querySelectorAll('img').forEach((img) => { if (eligible(img)) pending.add(img); });
+    schedule();
   }
+  function schedule() {
+    if (stopped || running || timer) return;
+    timer = setTimeout(() => { timer = null; void drain(); }, DOM_DEBOUNCE_MS);
+  }
+  async function drain() {
+    if (running || stopped) return;
+    running = true;
+    try {
+      while (pending.size && !stopped) {
+        const el = pending.values().next().value;
+        pending.delete(el);
+        if (!engines.dom || !eligible(el) || !analyzeVisibility(el).isHidden) continue;
+        const text = payload(el);
+        if (text.trim().length < 8 || scanned.get(el) === text) continue;
+        scanned.set(el, text);
+        const isCurrent = () => !stopped && engines.dom && eligible(el) && payload(el) === text && analyzeVisibility(el).isHidden;
+        try {
+          const threat = await analyzeText(text, ENGINE.DOM, { skipPersist: true, isCurrent });
+          if (!threat || !isCurrent()) continue;
+          const applied = await remediateDOM(el, threat, isCurrent);
+          if (applied) await persistAndBroadcastThreat(threat, true);
+        } catch { /* unavailable is not a clean verdict; retry after a content/settings change */ }
+      }
+    } finally { running = false; if (pending.size) schedule(); }
+  }
+  const stopSettings = watchEngines((value) => {
+    const enabled = !engines.dom && value.dom;
+    engines = value;
+    if (enabled && document.body) collect(document.body);
+  });
+  const observer = new MutationObserver((records) => {
+    for (const record of records) {
+      if (record.type === 'childList') {
+        record.addedNodes.forEach(collect);
+        if (record.removedNodes.length) collect(record.target);
+      } else collect(record.target);
+    }
+  });
+  const start = () => {
+    if (stopped || !document.body) return;
+    observer.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['style', 'class', 'hidden', 'alt', 'title', 'type', 'autocomplete'] });
+    collect(document.body);
+  };
+  if (document.body) start(); else document.addEventListener('DOMContentLoaded', start, { once: true });
+  return () => {
+    stopped = true; observer.disconnect(); stopSettings(); clearTimeout(timer); pending.clear();
+    document.removeEventListener('DOMContentLoaded', start);
+  };
 }

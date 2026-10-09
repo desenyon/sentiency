@@ -1,7 +1,6 @@
-function collectTechniques(node, prefix, out) {
+function collectTechniques(node, _prefix, out) {
   if (!node) return;
   Object.entries(node).forEach(([name, val]) => {
-    const path = prefix ? `${prefix} > ${name}` : name;
     if (val && typeof val === 'object' && val.description !== undefined) {
       out.add(name);
       if (val.children) collectTechniques(val.children, name, out);

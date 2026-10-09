@@ -1,6 +1,4 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "../shared/tailwind.css";
 
 html {
   scrollbar-width: none;
@@ -236,4 +234,9 @@ body {
   box-shadow:
     inset 0 0 0 1px #3f3f46,
     0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+/* Keep separators above subsequent engine rows; v4 divide-y places them below. */
+.sp-engine-list > :not([hidden]) ~ :not([hidden]) {
+  border-top: 1px solid rgba(39, 39, 42, 0.5);
 }

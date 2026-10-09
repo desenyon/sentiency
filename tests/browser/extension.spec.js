@@ -95,7 +95,7 @@ test('full sanitization stays empty, model HTML is inert, and history is metadat
   await expect.poll(async () => worker.evaluate(async () => (await chrome.storage.local.get('threatLog')).threatLog.length)).toBe(1);
   const log = await worker.evaluate(async () => (await chrome.storage.local.get('threatLog')).threatLog);
   expect(JSON.stringify(log)).not.toContain('SYNTHETIC_FLAGGED_PAYLOAD'); expect(JSON.stringify(log)).not.toContain('<img');
-  await page.screenshot({ path: 'test-results/extension-smoke.png' });
+  await page.screenshot({ path: 'test-results/extension-smoke.png', animations: 'disabled' });
   await page.close();
 });
 test('delayed classifier cannot overwrite a later edit', async () => {
@@ -145,4 +145,47 @@ test('real worker serializes concurrent storage writes and clears through the sa
   expect(JSON.stringify(result.before)).not.toContain('SYNTHETIC_PRIVATE_LOG'); expect(result.after).toEqual([]);
   expect(result.engines).toMatchObject({ copy: true, session: true });
   await page.close();
+});
+
+test('built styles preserve settings, sidebar, and shadow UI geometry', async () => {
+  const options = await context.newPage();
+  await options.setViewportSize({ width: 900, height: 1000 });
+  await options.goto(`chrome-extension://${extensionId}/options.html`);
+  await expect(options.locator('h1')).toHaveCSS('font-size', '17px');
+  await expect(options.locator('#root > div')).toHaveCSS('background-color', 'rgb(9, 9, 11)');
+  await expect(options.locator('footer')).toHaveCSS('backdrop-filter', 'blur(4px)');
+  await expect(options.locator('header > div')).toHaveCSS('max-width', '512px');
+  await options.screenshot({ path: 'test-results/options-style.png', fullPage: true, animations: 'disabled' });
+  await options.setViewportSize({ width: 375, height: 900 });
+  expect(await options.evaluate(() => document.documentElement.scrollWidth)).toBe(375);
+
+  const panel = await context.newPage();
+  await panel.setViewportSize({ width: 400, height: 1000 });
+  await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+  await expect(panel.locator('.sp-engine-list > li')).toHaveCount(4);
+  await expect(panel.locator('.sp-engine-list > li').first()).toHaveCSS('border-top-width', '0px');
+  await expect(panel.locator('.sp-engine-list > li').nth(1)).toHaveCSS('border-top-width', '1px');
+  await expect(panel.locator('.sp-engine-list > li').last()).toHaveCSS('border-bottom-width', '0px');
+  await panel.screenshot({ path: 'test-results/sidepanel-style.png', fullPage: true, animations: 'disabled' });
+
+  // Exercise the delivered CSS inside a real shadow tree: document-level @property
+  // initialization cannot be assumed to work in extension shadow stylesheets.
+  const page = await context.newPage();
+  await page.goto('http://sentiency.test/style');
+  const styles = await page.evaluate(async (id) => {
+    const host = document.createElement('div'); document.body.append(host);
+    const shadow = host.attachShadow({ mode: 'open' });
+    const link = document.createElement('link'); link.rel = 'stylesheet';
+    link.href = `chrome-extension://${id}/content.css`;
+    const loaded = new Promise((resolve, reject) => { link.onload = resolve; link.onerror = reject; });
+    shadow.append(link); await loaded;
+    const probe = document.createElement('div');
+    probe.className = 'rounded-2xl ring-1 ring-black/50 backdrop-blur-md text-matte-200 border border-matte-700 px-4 py-3';
+    probe.textContent = 'Synthetic styled shadow fixture'; shadow.append(probe);
+    const css = getComputedStyle(probe);
+    return Object.fromEntries(['color', 'borderRadius', 'borderTopWidth', 'borderTopStyle', 'padding', 'boxShadow', 'backdropFilter'].map((key) => [key, css[key]]));
+  }, extensionId);
+  expect(styles).toMatchObject({ color: 'rgb(180, 180, 192)', borderRadius: '16px', borderTopWidth: '1px', borderTopStyle: 'solid', padding: '12px 16px', backdropFilter: 'blur(12px)' });
+  expect(styles.boxShadow).toContain('1px');
+  await options.close(); await panel.close(); await page.close();
 });

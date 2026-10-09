@@ -1,6 +1,4 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "../../shared/tailwind.css";
 
 /*
  * Shadow UI must stay readable even if Tailwind utilities fail to load.

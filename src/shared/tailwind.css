@@ -1,0 +1,18 @@
+/* All three extension surfaces share the same theme and source scanning. */
+@import "tailwindcss" source(none);
+@config "../../tailwind.config.js";
+@source "../";
+
+/* Keep the established Tailwind 3 defaults where v4 changed preflight. */
+@layer base {
+  *, ::before, ::after, ::backdrop, ::file-selector-button {
+    border-color: #e5e7eb;
+  }
+  input::placeholder, textarea::placeholder {
+    color: #9ca3af;
+    opacity: 1;
+  }
+  button:not(:disabled), [role="button"] {
+    cursor: pointer;
+  }
+}

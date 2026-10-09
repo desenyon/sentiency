@@ -157,13 +157,16 @@ src/options/                settings and explicit API test
 src/sidepanel/              metadata history and explicit image upload
 tests/unit/                 synthetic unit/integration regressions
 tests/browser/              built MV3 extension regressions with mocked Gemini
+tests/tooling/              isolated watch/assets and presentation smoke tests
 ```
 
 The manifest currently requests `activeTab`, `scripting`, `storage`, `clipboardRead`, `clipboardWrite`, `sidePanel`, `tabs`, `alarms`, and `contextMenus`, plus broad host access for content scripts and Gemini. Some permissions are historical and broader than the current code needs; this upgrade does not change the manifest permissions. Content scripts run at `document_idle` in top-level frames only (`all_frames: false`). No analytics/telemetry sender is implemented.
 
+The shared Tailwind 4 entry point is `src/shared/tailwind.css`, with the established palette in `src/shared/legacy-palette.json` and custom theme in `tailwind.config.js`. PostCSS includes shadow-root property defaults required for borders/rings. Keep the browser styling regression when changing this pipeline. Tailwind 4 targets modern browsers (Chrome 111+); the side panel API remains an additional browser requirement. If native file watching reaches a platform resource limit, `WATCHPACK_POLLING=true npm run dev` enables polling.
+
 ## Dependency advisory status
 
-The authorized audit on 2026-10-09 found 17 affected-package entries. Compatible updates reduced this to **12 development-tool entries (10 high, 2 moderate)**; a separate production-tree audit reported **zero findings**. Remaining fixes require separate tool compatibility/migration work; no forced breaking upgrades were applied. See the [dependency audit record](docs/dependency-audit.md) for affected paths and limits. These counts are a dated registry result, not a guarantee of security.
+The authorized audit on 2026-10-09 initially found 17 affected-package entries. Compatible updates and tested Tailwind 4 / copy-webpack-plugin 14 migrations reduced this to **2 high development-tool entries** (`pptxgenjs` → `image-size`), with **zero moderate, low or critical findings**. A separate production-tree audit reported **zero findings**. The remaining parser advisories have no fixed dependency within the latest PptxGenJS release's declared range. No forced transitive overrides were applied. See the [dependency audit record](docs/dependency-audit.md) for affected paths and limits. These counts are a dated registry result, not a guarantee of security.
 
 ## Test and verify
 
@@ -171,6 +174,7 @@ The authorized audit on 2026-10-09 found 17 affected-package entries. Compatible
 npm ci --no-audit
 npm run lint
 npm test
+npm run test:tooling
 npm run build
 npx playwright install chromium
 npm run test:browser
@@ -180,11 +184,11 @@ npm run verify
 
 On Linux CI, use `npx playwright install --with-deps chromium`. The browser suite launches a fresh temporary Chromium profile and loads `dist/`; it never uses a personal browser profile. A synthetic page is served by Playwright request interception. Worker `fetch` is replaced with synthetic Gemini responses before analysis is enabled, and unrelated page requests are blocked. No real credentials or live Gemini calls are part of the suite.
 
-Coverage includes credential exclusions before payload access, settings hydration, synchronous paste/beforeinput cancellation and deduplication, full removal, overlapping spans, rich-editor node preservation, transaction undo and stale edits, inert model HTML, private events, metadata minimization, concurrent storage mutations/clear barriers, restart-compatible storage, malformed/refused/truncated classifier responses, deadlines/retry bounds, DOM mutation accumulation, stale nodes, and trajectory mapping beyond 12 turns. Browser tests additionally exercise real extension messaging, worker persistence, options, and sidebar rendering.
+Coverage includes credential exclusions before payload access, settings hydration, synchronous paste/beforeinput cancellation and deduplication, full removal, overlapping spans, rich-editor node preservation, transaction undo and stale edits, inert model HTML, private events, metadata minimization, concurrent storage mutations/clear barriers, restart-compatible storage, malformed/refused/truncated classifier responses, deadlines/retry bounds, DOM mutation accumulation, stale nodes, and trajectory mapping beyond 12 turns. Browser tests additionally exercise real extension messaging, worker persistence, responsive options/sidebar geometry and utility styles inside a real shadow tree. Tooling tests verify development watch rebuilds, copied assets, and a structurally valid 14-slide presentation with 12 embedded images. The watch test uses polling in a temporary source copy and does not modify the checkout.
 
-[CI](.github/workflows/ci.yml) runs lint, unit/integration tests, production build, and Chromium extension regressions on pushes and pull requests. Browser traces/screenshots are uploaded on failure. CI uses no Gemini secrets. Passing tests verify these synthetic cases, not coverage of every live site or model quality. See [upgrade design](docs/upgrade-design.md) for the invariants motivating the changes.
+[CI](.github/workflows/ci.yml) runs lint, unit/integration tests, tooling smoke tests, production build, and Chromium extension regressions on pushes and pull requests. Browser traces/screenshots are uploaded on failure. CI uses no Gemini secrets. Passing tests verify these synthetic cases, not coverage of every live site or model quality. See [upgrade design](docs/upgrade-design.md) for the invariants motivating the changes.
 
-`npm run deck:pptx` regenerates the historical hackathon presentation. Files under `presentations/` and `plan.md` are historical material and may describe behavior that differs from this README/current implementation.
+`npm run deck:pptx` regenerates the historical hackathon presentation. Set `SENTIENCY_DECK_OUTPUT=/absolute/path/deck.pptx` to write elsewhere; automated smoke tests do this and leave the tracked deck intact. Archive/XML checks do not replace a PowerPoint visual review. Files under `presentations/` and `plan.md` are historical material and may describe behavior that differs from this README/current implementation.
 
 ## Limitations and troubleshooting
 

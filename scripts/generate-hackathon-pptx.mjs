@@ -4,14 +4,14 @@
  */
 import PptxGenJS from 'pptxgenjs';
 import { existsSync, mkdirSync } from 'fs';
-import { dirname, join } from 'path';
+import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');
 const outDir = join(root, 'presentations', 'hackathon');
 const media = join(outDir, 'media');
-const outFile = join(outDir, 'Sentiency-Hackathon-Judges.pptx');
+const outFile = process.env.SENTIENCY_DECK_OUTPUT ? resolve(process.env.SENTIENCY_DECK_OUTPUT) : join(outDir, 'Sentiency-Hackathon-Judges.pptx');
 
 function pickShot(primary, fallback) {
   if (existsSync(primary)) return primary;
@@ -364,6 +364,6 @@ function darkSlide() {
   accentBar(s, 0.68);
 }
 
-mkdirSync(outDir, { recursive: true });
+mkdirSync(dirname(outFile), { recursive: true });
 await pptx.writeFile({ fileName: outFile });
 console.log('Wrote', outFile);
